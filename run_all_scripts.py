@@ -135,6 +135,8 @@ def main():
         for config, info in SCRIPT_CONFIGS.items()
     }
 
+    time.sleep(CHECK_INTERVAL)
+
     while True:
         for config, info in SCRIPT_CONFIGS.items():
             process = processes[config]
