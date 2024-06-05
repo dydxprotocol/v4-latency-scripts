@@ -1,0 +1,128 @@
+"""Script that listens to the websocket of a specific address 
+   and writes to bigquery when each message is received
+
+Usage: python listen_to_websocket.py 
+"""
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import json
+import logging
+import uuid
+from datetime import datetime
+
+from v4_client_py.clients.constants import Network
+
+# Import the BigQuery helpers
+from bq_helpers import create_table, BatchWriter
+
+from google.cloud import bigquery
+from google.cloud.bigquery import SchemaField
+from google.protobuf.json_format import MessageToJson
+
+import asyncio
+import websockets
+import json
+
+
+# Loading mnemonic from config.json
+with open("config.json", "r") as config_file:
+    config_json = json.load(config_file)
+
+logging.basicConfig(
+    filename=datetime.now().strftime("websocket_%H_%M_%d_%m_%Y.log"),
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
+DATASET_ID = "indexer_stream"
+TABLE_ID = "responses"
+
+SCHEMA = [
+    SchemaField("received_at", "TIMESTAMP", mode="REQUIRED"),
+    SchemaField("uuid", "STRING", mode="REQUIRED"),
+    SchemaField("response", "JSON", mode="NULLABLE"),
+]
+
+TIME_PARTITIONING = bigquery.TimePartitioning(field="received_at")
+# Batch settings
+BATCH_SIZE = 9
+BATCH_TIMEOUT = 10
+WORKER_COUNT = 1
+
+
+def process_message(message):
+    return {
+        "received_at": datetime.utcnow().isoformat("T") + "Z",
+        "uuid": str(uuid.uuid4()),
+        "response": message,
+    }
+
+
+class AsyncSocketClient:
+    def __init__(self, config, subaccount_id, batch_writer):
+        self.url = config.websocket_endpoint
+        self.subaccount_id = subaccount_id
+        self.batch_writer = batch_writer
+
+    async def connect(self):
+        retries = 0
+        while True:
+            try:
+                async with websockets.connect(self.url) as websocket:
+                    if self.subaccount_id:
+                        await self.subscribe(
+                            websocket, "v4_subaccounts", {"id": self.subaccount_id}
+                        )
+                    await self.consumer_handler(websocket)
+            except (
+                websockets.exceptions.ConnectionClosedError,
+                asyncio.exceptions.IncompleteReadError,
+            ) as e:
+                logging.error(f"WebSocket connection error: {e}. Reconnecting...")
+                retries += 1
+                await asyncio.sleep(
+                    min(2**retries, 60)
+                )  # Exponential backoff with a max delay of 60 seconds
+            except Exception as e:
+                logging.error(f"Unexpected error: {e}. Reconnecting...")
+                retries += 1
+                await asyncio.sleep(min(2**retries, 60))
+
+    async def consumer_handler(self, websocket):
+        async for message in websocket:
+            await self.batch_writer.enqueue_data(
+                process_message(message)
+            )  # Enqueue data for batch writing
+
+    async def send(self, websocket, message):
+        await websocket.send(message)
+
+    async def close(self, websocket):
+        await websocket.close()
+
+    async def subscribe(self, websocket, channel, params=None):
+        if params is None:
+            params = {}
+        message = json.dumps({"type": "subscribe", "channel": channel, **params})
+        await self.send(websocket, message)
+
+
+async def main():
+    batch_writer = BatchWriter(
+        DATASET_ID, TABLE_ID, WORKER_COUNT, BATCH_SIZE, BATCH_TIMEOUT
+    )
+    config = Network.config_network().indexer_config
+    subaccount_id = "/".join([config_json["address"], str(0)])
+    client = AsyncSocketClient(
+        config, subaccount_id=subaccount_id, batch_writer=batch_writer
+    )
+
+    batch_writer_task = asyncio.create_task(batch_writer.batch_writer_loop())
+    await client.connect()
+    await batch_writer_task
+
+
+if __name__ == "__main__":
+    create_table(DATASET_ID, TABLE_ID, SCHEMA, TIME_PARTITIONING)
+    asyncio.run(main())
