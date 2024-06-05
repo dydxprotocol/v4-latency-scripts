@@ -45,8 +45,8 @@ SCHEMA = [
 TIME_PARTITIONING = bigquery.TimePartitioning(field="sent_at")
 CLUSTERING_FIELDS = ["validator_address"]
 # Batch settings for BQ writes
-BATCH_SIZE = 50
-BATCH_TIMEOUT = 10
+BATCH_SIZE = 2
+BATCH_TIMEOUT = 30
 WORKER_COUNT = 1
 
 # Loading mnemonic from config.json
