@@ -113,7 +113,7 @@ def check_and_restart_script(
     )
     if latest_timestamp:
         current_time = datetime.utcnow().replace(tzinfo=None)
-        if current_time - latest_timestamp > :
+        if current_time - latest_timestamp > time_threshold:
             logging.info(
                 f"Latest timestamp for table {table_id} for script {script_name} is {latest_timestamp}, restarting {config_name}..."
             )
