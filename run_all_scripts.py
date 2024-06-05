@@ -3,6 +3,7 @@
 
 Usage: python run_all_scripts.py
 """
+
 import json
 import os
 import time
@@ -52,6 +53,13 @@ SCRIPT_CONFIGS = {
     "place_orders": {
         "script_name": "place_orders.py",
         "table_id": "latency_experiments.long_running_two_sided_orders",
+        "timestamp_column": "sent_at",
+        "filter": "",
+        "args": [],
+    },
+    "place_taker_orders": {
+        "script_name": "place_taker_orders.py",
+        "table_id": "latency_experiments.long_running_taker_orders",
         "timestamp_column": "sent_at",
         "filter": "",
         "args": [],

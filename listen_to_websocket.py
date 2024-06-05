@@ -60,9 +60,9 @@ def process_message(message):
 
 
 class AsyncSocketClient:
-    def __init__(self, config, subaccount_id, batch_writer):
+    def __init__(self, config, subaccount_ids, batch_writer):
         self.url = config.websocket_endpoint
-        self.subaccount_id = subaccount_id
+        self.subaccount_ids = subaccount_ids
         self.batch_writer = batch_writer
 
     async def connect(self):
@@ -70,10 +70,11 @@ class AsyncSocketClient:
         while True:
             try:
                 async with websockets.connect(self.url) as websocket:
-                    if self.subaccount_id:
-                        await self.subscribe(
-                            websocket, "v4_subaccounts", {"id": self.subaccount_id}
-                        )
+                    if self.subaccount_ids:
+                        for subaccount_id in self.subaccount_ids:
+                            await self.subscribe(
+                                websocket, "v4_subaccounts", {"id": subaccount_id}
+                            )
                     await self.consumer_handler(websocket)
             except (
                 websockets.exceptions.ConnectionClosedError,
@@ -113,9 +114,12 @@ async def main():
         DATASET_ID, TABLE_ID, WORKER_COUNT, BATCH_SIZE, BATCH_TIMEOUT
     )
     config = Network.config_network().indexer_config
-    subaccount_id = "/".join([config_json["address"], str(0)])
+    subaccount_ids = [
+        "/".join([config_json["maker_address"], str(0)]),
+        "/".join([config_json["taker_address"], str(0)]),
+    ]
     client = AsyncSocketClient(
-        config, subaccount_id=subaccount_id, batch_writer=batch_writer
+        config, subaccount_ids=subaccount_ids, batch_writer=batch_writer
     )
 
     batch_writer_task = asyncio.create_task(batch_writer.batch_writer_loop())

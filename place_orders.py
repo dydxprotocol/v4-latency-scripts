@@ -70,7 +70,7 @@ STARTING_CLIENT_ID = randrange(0, 2**32 - 1)
 NUM_BLOCKS = 1000000
 WAIT_BLOCKS = 5
 MAX_LEN_ORDERS = 50
-DYDX_MNEMONIC = config["mnemonic"]
+DYDX_MNEMONIC = config["maker_mnemonic"]
 GTB_DELTA = 4
 
 # Logging setup
