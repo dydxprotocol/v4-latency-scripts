@@ -1,5 +1,5 @@
 # Overview
-This repo contains various scripts to understand the latency of the dYdX chain.
+This repo contains various scripts to understand the latency of networks using the dYdX Chain software.
 1. `listen_to_grpc_stream.py` - listens to a gRPC stream from a full node and writes and writes the received data to BigQuery.
 2. `listen_to_websocket_stream.py` - listens to the indexer's websocket stream and writes and writes the received data to BigQuery.
 3. `place_orders.py` - sends a new order to a public grpc node every block
