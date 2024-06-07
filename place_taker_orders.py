@@ -1,9 +1,3 @@
-"""Script that places orders every block with the same client id (order replacement)
-   and writes the time that it was placed along with the order info to BigQuery
-
-Usage: python place_replacement_orders.py
-"""
-
 import asyncio
 import json
 import logging
@@ -30,14 +24,12 @@ from v4_client_py.clients.helpers.chain_helpers import (
     Order,
 )
 
-# The idea of this experiment is to see what is the lag between the remove and place messages when we replace orders
-
 # Import BigQuery helpers
 from bq_helpers import create_table, BatchWriter
 
 # Dataset configuration
 DATASET_ID = "latency_experiments"
-TABLE_ID = "two_sided_replace_orders"
+TABLE_ID = "long_running_taker_orders"
 
 # Schema and partitioning
 SCHEMA = [
@@ -53,8 +45,8 @@ SCHEMA = [
 TIME_PARTITIONING = bigquery.TimePartitioning(field="sent_at")
 CLUSTERING_FIELDS = ["validator_address"]
 # Batch settings for BQ writes
-BATCH_SIZE = 50
-BATCH_TIMEOUT = 10
+BATCH_SIZE = 2
+BATCH_TIMEOUT = 60
 WORKER_COUNT = 1
 
 # Loading mnemonic from config.json
@@ -62,24 +54,27 @@ with open("config.json", "r") as config_file:
     config = json.load(config_file)
 
 # Constants on how to place orders
-TIME_IN_FORCE = Order_TimeInForce.TIME_IN_FORCE_POST_ONLY
-BUY_PRICE = 0.01
-SELL_PRICE = 10
-SIZE = 1
-MARKET = "AXL-USD"
+TIME_IN_FORCE = Order_TimeInForce.TIME_IN_FORCE_IOC
+BUY_PRICE = 5000
+SELL_PRICE = 3000
+SIZE = 0.001
+MARKET = "ETH-USD"
 NUM_ORDERS_PER_SIDE_EACH_BLOCK = 1
-CLIENT_ID_BUY = 111111111
-CLIENT_ID_SELL = 222222222
-NUM_BLOCKS = 1000
-WAIT_BLOCKS = 10
-MAX_LEN_ORDERS = 20000
-DYDX_MNEMONIC = config["maker_mnemonic"]
-GTB_DELTA = 15
+STARTING_CLIENT_ID = randrange(0, 2**32 - 1)
+# how many blocks to place it for
+NUM_BLOCKS = 1000000
+WAIT_BLOCKS = 5
+MAX_LEN_ORDERS = 50
+DYDX_MNEMONIC = config["taker_mnemonic"]
+GTB_DELTA = 4
+# how often to place these taker orders
+# if we place too often the address will lose too much money to fees + spread
+PLACE_INTERVAL = 50
 
 # Logging setup
 logging.basicConfig(
-    filename=f"order_logs_{GTB_DELTA}.log",
-    level=logging.INFO,
+    filename=f"order_logs_{STARTING_CLIENT_ID}_{GTB_DELTA}.log",
+    level=logging.ERROR,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
@@ -186,6 +181,7 @@ def get_markets_data(client, market):
 
 # This presigns all the orders and puts it into a dictionary that is used to write later
 def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
+    client_id = STARTING_CLIENT_ID
     current_block = client.get_current_block() + WAIT_BLOCKS
     while True:
         with lock:
@@ -201,7 +197,7 @@ def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
                             subaccount,
                             OrderSide.BUY,
                             BUY_PRICE,
-                            CLIENT_ID_BUY,
+                            client_id + i * 2,
                             current_block + GTB_DELTA,
                         )
                     )
@@ -213,13 +209,15 @@ def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
                             subaccount,
                             OrderSide.SELL,
                             SELL_PRICE,
-                            CLIENT_ID_SELL,
+                            client_id + i * 2 + 1,
                             current_block + GTB_DELTA,
                         )
                     )
-                current_block += 1
+                client_id += NUM_ORDERS_PER_SIDE_EACH_BLOCK * 2
+                # cant do it every block or the fees drain too quickly
+                current_block += PLACE_INTERVAL
 
-        time.sleep(0.1)
+        time.sleep(0.2)
 
 
 async def listen_to_block_stream_and_place_orders(batch_writer):
@@ -274,8 +272,7 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
                     orders.pop(current_block)
             previous_block = current_block
             num_blocks_placed += 1
-            # place orders every 10 seconds
-            await asyncio.sleep(10)
+
         await asyncio.sleep(0.01)
 
 

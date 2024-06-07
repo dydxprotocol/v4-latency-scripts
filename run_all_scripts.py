@@ -3,6 +3,7 @@
 
 Usage: python run_all_scripts.py
 """
+
 import json
 import os
 import time
@@ -23,7 +24,6 @@ PROJECT_ID = config["bigquery_project_id"]
 FULL_NODE_ADDRESS_1 = config["full_node_address_1"]
 FULL_NODE_ADDRESS_2 = config["full_node_address_2"]
 CHECK_INTERVAL = 180  # Check every 3 minutes
-TIME_THRESHOLD = timedelta(seconds=90)  # cant be more than 90 sec delayed
 
 SCRIPT_CONFIGS = {
     "websocket": {
@@ -32,6 +32,7 @@ SCRIPT_CONFIGS = {
         "timestamp_column": "received_at",
         "filter": "",
         "args": [],
+        "time_threshold": timedelta(seconds=90),
     },
     "grpc_stream "
     + FULL_NODE_ADDRESS_1: {
@@ -40,6 +41,7 @@ SCRIPT_CONFIGS = {
         "timestamp_column": "received_at",
         "filter": 'server_address = "{address}"'.format(address=FULL_NODE_ADDRESS_1),
         "args": ["--server_address", FULL_NODE_ADDRESS_1],
+        "time_threshold": timedelta(seconds=90),
     },
     "grpc_stream "
     + FULL_NODE_ADDRESS_2: {
@@ -48,6 +50,7 @@ SCRIPT_CONFIGS = {
         "timestamp_column": "received_at",
         "filter": 'server_address = "{address}"'.format(address=FULL_NODE_ADDRESS_2),
         "args": ["--server_address", FULL_NODE_ADDRESS_2],
+        "time_threshold": timedelta(seconds=90),
     },
     "place_orders": {
         "script_name": "place_orders.py",
@@ -55,6 +58,15 @@ SCRIPT_CONFIGS = {
         "timestamp_column": "sent_at",
         "filter": "",
         "args": [],
+        "time_threshold": timedelta(seconds=90),
+    },
+    "place_taker_orders": {
+        "script_name": "place_taker_orders.py",
+        "table_id": "latency_experiments.long_running_taker_orders",
+        "timestamp_column": "sent_at",
+        "filter": "",
+        "args": [],
+        "time_threshold": timedelta(seconds=180),
     },
     # Add more scripts with their corresponding table IDs, timestamp columns, and filters here
 }
@@ -94,13 +106,14 @@ def check_and_restart_script(
     timestamp_column,
     filter_condition,
     args,
+    time_threshold,
 ):
     latest_timestamp = get_latest_timestamp(
         table_id, timestamp_column, filter_condition
     )
     if latest_timestamp:
         current_time = datetime.utcnow().replace(tzinfo=None)
-        if current_time - latest_timestamp > TIME_THRESHOLD:
+        if current_time - latest_timestamp > time_threshold:
             logging.info(
                 f"Latest timestamp for table {table_id} for script {script_name} is {latest_timestamp}, restarting {config_name}..."
             )
@@ -121,6 +134,8 @@ def main():
         config: start_script(info["script_name"], info["args"])
         for config, info in SCRIPT_CONFIGS.items()
     }
+
+    time.sleep(CHECK_INTERVAL)
 
     while True:
         for config, info in SCRIPT_CONFIGS.items():
@@ -144,6 +159,7 @@ def main():
                 timestamp_column,
                 filter_condition,
                 args,
+                info["time_threshold"],
             )
 
         time.sleep(CHECK_INTERVAL)
