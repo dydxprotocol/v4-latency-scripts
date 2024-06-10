@@ -23,7 +23,7 @@ with open("config.json", "r") as config_file:
 PROJECT_ID = config["bigquery_project_id"]
 FULL_NODE_ADDRESS_1 = config["full_node_address_1"]
 FULL_NODE_ADDRESS_2 = config["full_node_address_2"]
-CHECK_INTERVAL = 180  # Check every 3 minutes
+CHECK_INTERVAL = 250  # Check every 250 seconds
 
 SCRIPT_CONFIGS = {
     "websocket": {
