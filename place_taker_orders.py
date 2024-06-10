@@ -69,11 +69,11 @@ DYDX_MNEMONIC = config["taker_mnemonic"]
 GTB_DELTA = 4
 # how often to place these taker orders
 # if we place too often the address will lose too much money to fees + spread
-PLACE_INTERVAL = 50
+PLACE_INTERVAL = 300
 
 # Logging setup
 logging.basicConfig(
-    filename=f"order_logs_{STARTING_CLIENT_ID}_{GTB_DELTA}.log",
+    filename=f"taker_order_logs.log",
     level=logging.ERROR,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )

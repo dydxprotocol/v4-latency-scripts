@@ -30,7 +30,7 @@ with open("config.json", "r") as config_file:
     config_json = json.load(config_file)
 
 logging.basicConfig(
-    filename=datetime.now().strftime("websocket_%H_%M_%d_%m_%Y.log"),
+    filename=datetime.now().strftime("websocket.log"),
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )

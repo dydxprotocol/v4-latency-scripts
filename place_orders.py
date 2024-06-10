@@ -75,7 +75,7 @@ GTB_DELTA = 4
 
 # Logging setup
 logging.basicConfig(
-    filename=f"order_logs_{STARTING_CLIENT_ID}_{GTB_DELTA}.log",
+    filename=f"maker_orders.log",
     level=logging.ERROR,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
