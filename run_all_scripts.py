@@ -68,6 +68,14 @@ SCRIPT_CONFIGS = {
         "args": [],
         "time_threshold": timedelta(seconds=180),
     },
+    "place_stateful_orders": {
+        "script_name": "place_stateful_orders.py",
+        "table_id": "latency_experiments.long_running_stateful_orders",
+        "timestamp_column": "sent_at",
+        "filter": "",
+        "args": [],
+        "time_threshold": timedelta(seconds=90),
+    },
     # Add more scripts with their corresponding table IDs, timestamp columns, and filters here
 }
 
