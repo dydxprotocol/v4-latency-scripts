@@ -1,4 +1,4 @@
-"""Script that places orders every block with the same client id (order replacement)
+"""Script that places stateful orders every N seconds
    and writes the time that it was placed along with the order info to BigQuery
 
 Usage: python place_replacement_orders.py
@@ -72,6 +72,7 @@ WAIT_BLOCKS = 10
 MAX_LEN_ORDERS = 20000
 DYDX_MNEMONIC = config["stateful_mnemonic"]
 GTBT_DELTA = 5
+PLACE_INTERVAL = 10
 
 # Logging setup
 logging.basicConfig(
@@ -233,8 +234,8 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
         )
         client_id += 1
         num_blocks_placed += 1
-        # place orders every 15 seconds to avoid hitting the place order limit
-        await asyncio.sleep(10)
+        # place orders every PLACE_INTERVAL seconds to avoid hitting the place stateful order limit
+        await asyncio.sleep(PLACE_INTERVAL)
 
 
 async def main():
