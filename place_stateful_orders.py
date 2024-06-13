@@ -1,7 +1,7 @@
 """Script that places stateful orders every N seconds
    and writes the time that it was placed along with the order info to BigQuery
 
-Usage: python place_replacement_orders.py
+Usage: python place_stateful_orders.py
 """
 
 import asyncio
@@ -30,7 +30,7 @@ from v4_client_py.clients.helpers.chain_helpers import (
     Order,
 )
 
-# The idea of this experiment is to see what is the lag between the remove and place messages when we replace orders
+# The idea of this experiment is to see what is the lag between placing a stateful order and when it shows up in a stream
 
 # Import BigQuery helpers
 from bq_helpers import create_table, BatchWriter
