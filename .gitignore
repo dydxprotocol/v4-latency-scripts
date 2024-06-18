@@ -1,4 +1,5 @@
 config.json
+last_processed_timestamps.json
 service-account.json
 venv/
 *.log
