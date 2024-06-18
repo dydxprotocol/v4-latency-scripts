@@ -17,6 +17,7 @@ with open("config.json", "r") as config_file:
     config = json.load(config_file)
 
 START_TIMESTAMP = "2024-06-18 22:05:00"
+PROJECT_ID = config["bigquery_project_id"]
 # Configuration
 QUERIES = [
     {
@@ -25,8 +26,8 @@ QUERIES = [
                 SELECT p.received_at
                     , TIMESTAMP_DIFF(p.received_at, s.sent_at, millisecond) AS latency
                     , p.server_address
-                FROM `dydx-ce5e3.latency_experiments.long_running_two_sided_orders` s
-                JOIN `dydx-ce5e3.full_node_stream.order_places` p
+                FROM `{project_id}.latency_experiments.long_running_two_sided_orders` s
+                JOIN `{project_id}.full_node_stream.order_places` p
                    ON p.client_id = CAST(s.client_id AS STRING)
                   AND p.address = s.address
                   AND p.received_at > TIMESTAMP("{start_timestamp}")
@@ -37,8 +38,8 @@ QUERIES = [
                 SELECT p.received_at
                     , TIMESTAMP_DIFF(p.received_at, s.sent_at, millisecond) AS latency
                     , "indexer" AS server_address
-                FROM `dydx-ce5e3.latency_experiments.long_running_two_sided_orders` s
-                JOIN `dydx-ce5e3.indexer_stream.received_orders_and_cancels` p
+                FROM `{project_id}.latency_experiments.long_running_two_sided_orders` s
+                JOIN `{project_id}.indexer_stream.received_orders_and_cancels` p
                     ON p.client_id = CAST(s.client_id AS STRING)
                    AND p.address = s.address
                    AND p.received_at > TIMESTAMP("{start_timestamp}")
@@ -47,7 +48,8 @@ QUERIES = [
                 AND s.address = @maker_address
                 ORDER BY 1
         """.format(
-            start_timestamp=START_TIMESTAMP
+            start_timestamp=START_TIMESTAMP,
+            project_id=PROJECT_ID,
         ),
         "params": {"maker_address": config["maker_address"]},
         "metric_name": "bigquery.short_term_order_latency",
@@ -58,8 +60,8 @@ QUERIES = [
             SELECT p.received_at
                 , TIMESTAMP_DIFF(p.received_at, s.sent_at, millisecond) AS latency
                 , p.server_address
-            FROM `dydx-ce5e3.latency_experiments.long_running_stateful_orders` s
-            JOIN `dydx-ce5e3.full_node_stream.order_places` p
+            FROM `{project_id}.latency_experiments.long_running_stateful_orders` s
+            JOIN `{project_id}.full_node_stream.order_places` p
                 ON p.client_id = CAST(s.client_id AS STRING)
             AND p.address = s.address
             AND p.received_at > TIMESTAMP("{start_timestamp}")
@@ -70,8 +72,8 @@ QUERIES = [
             SELECT p.received_at
                 , TIMESTAMP_DIFF(p.received_at, s.sent_at, millisecond) AS latency
                 , "indexer" AS server_address
-            FROM `dydx-ce5e3.latency_experiments.long_running_stateful_orders` s
-            JOIN `dydx-ce5e3.indexer_stream.received_orders_and_cancels` p
+            FROM `{project_id}.latency_experiments.long_running_stateful_orders` s
+            JOIN `{project_id}.indexer_stream.received_orders_and_cancels` p
                 ON p.client_id = CAST(s.client_id AS STRING)
             AND p.address = s.address
             AND p.received_at > TIMESTAMP("{start_timestamp}")
@@ -80,7 +82,8 @@ QUERIES = [
             AND s.address = @stateful_address
             ORDER BY 1
         """.format(
-            start_timestamp=START_TIMESTAMP
+            start_timestamp=START_TIMESTAMP,
+            project_id=PROJECT_ID,
         ),
         "params": {"stateful_address": config["stateful_address"]},
         "metric_name": "bigquery.stateful_order_latency",
@@ -89,7 +92,6 @@ QUERIES = [
 
 DATADOG_API_KEY = config["dd_api_key"]
 DATADOG_APP_KEY = config["dd_app_key"]
-PROJECT_ID = config["bigquery_project_id"]
 POLL_INTERVAL = 60  # 1 minute
 STATE_FILE = "last_processed_timestamps.json"
 
