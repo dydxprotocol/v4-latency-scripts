@@ -87,7 +87,7 @@ logging.basicConfig(
 
 
 def get_latest_timestamp(table_id, timestamp_column, filter_condition):
-    filter_clause = f"WHERE {filter_condition}" if filter_condition else ""
+    filter_clause = f"WHERE TIMESTAMP_TRUNC({timestamp_column}, DAY) = TIMESTAMP(CURRENT_DATE()) AND {filter_condition}" if filter_condition else ""
     query = f"""
     SELECT MAX({timestamp_column}) as latest_timestamp
     FROM `{PROJECT_ID}.{table_id}`
