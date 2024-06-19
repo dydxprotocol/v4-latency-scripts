@@ -34,6 +34,7 @@ QUERIES = [
                   AND p.received_at > TIMESTAMP(@timestamp)
                 WHERE s.sent_at > TIMESTAMP("{start_timestamp}")
                   AND s.address = @maker_address
+                  AND TIMESTAMP_TRUNC(s.sent_at, DAY) > TIMESTAMP(TIMESTAMP_ADD(CURRENT_DATE, INTERVAL -1 DAY))
                 UNION ALL
                 SELECT p.received_at
                     , TIMESTAMP_DIFF(p.received_at, s.sent_at, millisecond) AS latency
@@ -45,7 +46,8 @@ QUERIES = [
                    AND p.received_at > TIMESTAMP("{start_timestamp}")
                   AND p.received_at > TIMESTAMP(@timestamp)
                 WHERE s.sent_at > TIMESTAMP("{start_timestamp}")
-                AND s.address = @maker_address
+                  AND s.address = @maker_address
+                  AND TIMESTAMP_TRUNC(s.sent_at, DAY) > TIMESTAMP(TIMESTAMP_ADD(CURRENT_DATE, INTERVAL -1 DAY))
                 ORDER BY 1
         """.format(
             start_timestamp=START_TIMESTAMP,
@@ -68,6 +70,7 @@ QUERIES = [
             AND p.received_at > TIMESTAMP(@timestamp)
             WHERE s.sent_at > TIMESTAMP("{start_timestamp}")
             AND s.address = @stateful_address
+            AND TIMESTAMP_TRUNC(s.sent_at, DAY) > TIMESTAMP(TIMESTAMP_ADD(CURRENT_DATE, INTERVAL -1 DAY))
             UNION ALL
             SELECT p.received_at
                 , TIMESTAMP_DIFF(p.received_at, s.sent_at, millisecond) AS latency
@@ -80,6 +83,7 @@ QUERIES = [
             AND p.received_at > TIMESTAMP(@timestamp)
             WHERE s.sent_at > TIMESTAMP("{start_timestamp}")
             AND s.address = @stateful_address
+            AND TIMESTAMP_TRUNC(s.sent_at, DAY) > TIMESTAMP(TIMESTAMP_ADD(CURRENT_DATE, INTERVAL -1 DAY))
             ORDER BY 1
         """.format(
             start_timestamp=START_TIMESTAMP,
