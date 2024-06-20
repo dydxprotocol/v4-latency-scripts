@@ -24,7 +24,7 @@ from bq_helpers import create_table, BatchWriter
 # Dataset configuration
 DATASET_ID = "full_node_stream"
 TABLE_ID = "responses"
-CLOB_PAIR_IDS = range(69)
+CLOB_PAIR_IDS = range(70)
 
 # Schema, partitioning, and clustering
 SCHEMA = [
