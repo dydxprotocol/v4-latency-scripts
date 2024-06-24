@@ -8,7 +8,7 @@ import logging
 
 logging.basicConfig(
     filename="bigquery_to_dd.log",
-    level=logging.INFO,
+    level=logging.ERROR,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
@@ -167,7 +167,7 @@ def monitor():
 
                 if metrics:
                     logging.info("sending_metrics")
-                    api.Metric.send(metrics)
+                    api.Metric.send(metrics, type="distribution")
 
                 last_processed_timestamps[query_name] = str(latest_timestamp)
             save_last_processed_timestamps(last_processed_timestamps)
