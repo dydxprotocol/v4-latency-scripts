@@ -54,7 +54,7 @@ QUERIES = [
             project_id=PROJECT_ID,
         ),
         "params": {"maker_address": config["maker_address"]},
-        "metric_name": "bigquery.short_term_order_latency_dist",
+        "metric_name": "bigquery.short_term_order_latency",
     },
     {
         "name": "stateful_order_latency",
@@ -90,7 +90,7 @@ QUERIES = [
             project_id=PROJECT_ID,
         ),
         "params": {"stateful_address": config["stateful_address"]},
-        "metric_name": "bigquery.stateful_order_latency_dist",
+        "metric_name": "bigquery.stateful_order_latency",
     },
 ]
 
@@ -147,6 +147,7 @@ def monitor():
                 )
                 results = run_query(client, query, params, last_processed_timestamp)
                 points = []
+                metrics = []
                 latest_timestamp = last_processed_timestamp
 
                 # loop through results
@@ -154,6 +155,17 @@ def monitor():
                     timestamp = int(row["received_at"].timestamp())
                     points.append((timestamp, [row["latency"]]))
                     latest_timestamp = row["received_at"]
+                    tags = [
+                        f"server_address:{row['server_address']}",
+                        f"service_name:v4-latency-scripts",
+                        "environment:mainnet",
+                    ]
+                    metric = {
+                        "metric": metric_name,
+                        "points": [(timestamp, row["latency"])],
+                        "tags": tags,
+                    }
+                    metrics.append(metric)
 
                 if points:
                     tags = [
@@ -162,11 +174,12 @@ def monitor():
                         "environment:test",
                     ]
                     logging.info(f"Sending {len(points)} latency points to Datadog")
-                    api.Distribution.send(
-                        metric=metric_name,
-                        points=points,
-                        tags=tags
-                    )
+                    api.Distribution.send(metric=metric_name + "_dist", points=points, tags=tags)
+
+                if metrics:
+                    logging.info("sending_metrics")
+                    api.Metric.send(metrics)
+
                 last_processed_timestamps[query_name] = str(latest_timestamp)
             save_last_processed_timestamps(last_processed_timestamps)
             time.sleep(POLL_INTERVAL)
