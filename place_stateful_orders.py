@@ -15,51 +15,44 @@ from datetime import datetime
 from google.cloud import bigquery
 from google.cloud.bigquery import SchemaField
 
-from v4_client_py.chain.aerial.tx import SigningCfg, Transaction
-from v4_client_py.chain.aerial.client import LedgerClient, NetworkConfig
 from v4_client_py.chain.aerial.wallet import LocalWallet
-from v4_client_py.clients import CompositeClient, Subaccount
-from v4_client_py.clients.constants import BECH32_PREFIX, Network
+from v4_client_py.clients import Subaccount
+from v4_client_py.clients.constants import BECH32_PREFIX
 from v4_client_py.clients.helpers.chain_helpers import OrderSide
 from v4_client_py.clients.helpers.chain_helpers import (
     Order_TimeInForce,
-    calculate_side,
-    calculate_quantums,
-    calculate_subticks,
     ORDER_FLAGS_LONG_TERM,
     Order,
 )
 
 # The idea of this experiment is to see what is the lag between placing a stateful order and when it shows up in a stream
 
-# Import BigQuery helpers
-from bq_helpers import create_table, BatchWriter
+# Import helpers
+from bq_helpers import (
+    create_table,
+    BatchWriter,
+    CLUSTERING_FIELDS,
+    SCHEMA,
+    TIME_PARTITIONING,
+)
+from client_helpers import (
+    get_markets_data,
+    load_config,
+    place_orders,
+    precompute_order,
+    setup_clients,
+)
 
 # Dataset configuration
 DATASET_ID = "latency_experiments"
 TABLE_ID = "long_running_stateful_orders"
 
-# Schema and partitioning
-SCHEMA = [
-    SchemaField("sent_at", "TIMESTAMP", mode="REQUIRED"),
-    SchemaField("uuid", "STRING", mode="REQUIRED"),
-    SchemaField("validator_address", "STRING", mode="REQUIRED"),
-    SchemaField("block", "INT64", mode="REQUIRED"),
-    SchemaField("address", "STRING", mode="REQUIRED"),
-    SchemaField("side", "STRING", mode="REQUIRED"),
-    SchemaField("good_til_block", "INT64", mode="REQUIRED"),
-    SchemaField("client_id", "INT64", mode="REQUIRED"),
-]
-TIME_PARTITIONING = bigquery.TimePartitioning(field="sent_at")
-CLUSTERING_FIELDS = ["validator_address"]
 # Batch settings for BQ writes
 BATCH_SIZE = 2
 BATCH_TIMEOUT = 10
 WORKER_COUNT = 1
 
-# Loading mnemonic from config.json
-with open("config.json", "r") as config_file:
-    config = json.load(config_file)
+config = load_config()
 
 # Constants on how to place orders
 TIME_IN_FORCE = Order_TimeInForce.TIME_IN_FORCE_POST_ONLY
@@ -82,125 +75,10 @@ logging.basicConfig(
 )
 
 
-def place_order(client, block, msg_and_order, batch_writer):
-    try:
-        logging.info(f"Placing order: {msg_and_order[0]}")
-        result = client.broadcast_tx(msg_and_order[0])
-        logging.info(f"Placed order: {msg_and_order[1]}")
-    except Exception as error:
-        err_str = str(error)
-        logging.error(f"Order failed: {msg_and_order[1]} {err_str}")
-    return
-
-
-async def place_orders(client, block, msg_and_orders, batch_writer):
-    loop = asyncio.get_running_loop()
-    for msg_and_order in msg_and_orders:
-        logging.info(f"Logging order: {msg_and_order[0]}")
-        # Record order information in BigQuery
-        order = msg_and_order[1].order
-        order_data = {
-            "sent_at": datetime.utcnow().isoformat("T") + "Z",
-            "uuid": str(randrange(2**32 - 1)),
-            "validator_address": client._network_config.url,
-            "block": block,
-            "address": order.order_id.subaccount_id.owner,
-            "side": order.side,
-            "good_til_block": order.good_til_block,
-            "client_id": order.order_id.client_id,
-        }
-        loop = asyncio.get_running_loop()
-        # write to BQ
-        await batch_writer.enqueue_data(order_data)
-        # broadcast order
-        loop.run_in_executor(
-            None,
-            place_order,
-            client,
-            block,
-            msg_and_order,
-            batch_writer,
-        )
-
-
-def precompute_order(
-    client, ledger_client, market, subaccount, side, price, client_id, sequence
-):
-    clob_pair_id = market["clobPairId"]
-    atomic_resolution = market["atomicResolution"]
-    step_base_quantums = market["stepBaseQuantums"]
-    quantum_conversion_exponent = market["quantumConversionExponent"]
-    subticks_per_tick = market["subticksPerTick"]
-    order_side = calculate_side(side)
-    quantums = calculate_quantums(SIZE, atomic_resolution, step_base_quantums)
-    subticks = calculate_subticks(
-        price, atomic_resolution, quantum_conversion_exponent, subticks_per_tick
-    )
-    order_flags = ORDER_FLAGS_LONG_TERM
-    gtbt = client.calculate_good_til_block_time(GTBT_DELTA)
-
-    msg = client.validator_client.post.composer.compose_msg_place_order(
-        address=subaccount.address,
-        subaccount_number=subaccount.subaccount_number,
-        client_id=client_id,
-        clob_pair_id=clob_pair_id,
-        order_flags=order_flags,
-        good_til_block=0,
-        good_til_block_time=gtbt,
-        side=order_side,
-        quantums=quantums,
-        subticks=subticks,
-        time_in_force=TIME_IN_FORCE,
-        reduce_only=False,
-        client_metadata=0,
-        condition_type=Order.CONDITION_TYPE_UNSPECIFIED,
-        conditional_order_trigger_subticks=0,
-    )
-
-    wallet = subaccount.wallet
-    tx = Transaction()
-    tx.add_message(msg)
-    gas_limit = 0
-    sender = wallet
-    memo = None
-
-    fee = ledger_client.estimate_fee_from_gas(gas_limit)
-    account = ledger_client.query_account(sender.address())
-
-    tx.seal(
-        SigningCfg.direct(sender.public_key(), sequence),
-        fee=fee,
-        gas_limit=gas_limit,
-        memo=memo,
-    )
-    tx.sign(sender.signer(), ledger_client.network_config.chain_id, account.number)
-    tx.complete()
-    return (tx, msg)
-
-
-def get_markets_data(client, market):
-    markets_response = client.indexer_client.markets.get_perpetual_markets(market)
-    return markets_response.data["markets"][market]
-
-
 async def listen_to_block_stream_and_place_orders(batch_writer):
     # Setup clients to broadcast
     wallet = LocalWallet.from_mnemonic(DYDX_MNEMONIC, BECH32_PREFIX)
-    network_config = Network.config_network()
-    # hardcode constants
-    network_config.validator_config.grpc_endpoint = "dydx-grpc.polkachu.com:23890"
-    network_config.validator_config.url = "https://dydx-grpc.polkachu.com:23890"
-    network_config.validator_config.ssl_enabled = False
-    client = CompositeClient(network_config)
-    url = (
-        "grpc+https://"
-        if client.validator_client.post.config.ssl_enabled
-        else "grpc+http://"
-    ) + client.validator_client.post.config.grpc_endpoint
-    network = NetworkConfig(
-        client.validator_client.post.config.chain_id, 0, None, None, url, None
-    )
-    ledger_client = LedgerClient(network)
+    client, ledger_client = setup_clients("dydx-grpc.polkachu.com:23890")
 
     subaccount = Subaccount(wallet, 0)
     market = get_markets_data(client, MARKET)
@@ -219,6 +97,11 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
                 OrderSide.BUY,
                 BUY_PRICE,
                 client_id,
+                0,
+                client.calculate_good_til_block_time(GTBT_DELTA),
+                SIZE,
+                ORDER_FLAGS_LONG_TERM,
+                TIME_IN_FORCE,
                 account.sequence,
             )
         ]

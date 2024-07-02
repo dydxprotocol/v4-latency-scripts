@@ -8,7 +8,7 @@ import logging
 
 logging.basicConfig(
     filename="bigquery_to_dd.log",
-    level=logging.INFO,
+    level=logging.ERROR,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
@@ -146,16 +146,19 @@ def monitor():
                     query_name, START_TIMESTAMP
                 )
                 results = run_query(client, query, params, last_processed_timestamp)
+                points = []
                 metrics = []
                 latest_timestamp = last_processed_timestamp
 
                 # loop through results
                 for row in results:
                     timestamp = int(row["received_at"].timestamp())
+                    points.append((timestamp, [row["latency"]]))
+                    latest_timestamp = row["received_at"]
                     tags = [
                         f"server_address:{row['server_address']}",
                         f"service_name:v4-latency-scripts",
-                        "environment:test",
+                        "environment:mainnet",
                     ]
                     metric = {
                         "metric": metric_name,
@@ -163,7 +166,15 @@ def monitor():
                         "tags": tags,
                     }
                     metrics.append(metric)
-                    latest_timestamp = row["received_at"]
+
+                if points:
+                    tags = [
+                        f"server_address:{row['server_address']}",
+                        "service_name:v4-latency-scripts",
+                        "environment:test",
+                    ]
+                    logging.info(f"Sending {len(points)} latency points to Datadog")
+                    api.Distribution.send(metric=metric_name + "_dist", points=points, tags=tags)
 
                 if metrics:
                     logging.info("sending_metrics")

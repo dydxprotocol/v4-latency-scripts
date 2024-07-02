@@ -1,8 +1,23 @@
 import asyncio
 from datetime import datetime
 from google.cloud import bigquery
+from google.cloud.bigquery import SchemaField
 from google.cloud.exceptions import NotFound
 from collections import deque
+
+# Schema and partitioning
+SCHEMA = [
+    SchemaField("sent_at", "TIMESTAMP", mode="REQUIRED"),
+    SchemaField("uuid", "STRING", mode="REQUIRED"),
+    SchemaField("validator_address", "STRING", mode="REQUIRED"),
+    SchemaField("block", "INT64", mode="REQUIRED"),
+    SchemaField("address", "STRING", mode="REQUIRED"),
+    SchemaField("side", "STRING", mode="REQUIRED"),
+    SchemaField("good_til_block", "INT64", mode="REQUIRED"),
+    SchemaField("client_id", "INT64", mode="REQUIRED"),
+]
+TIME_PARTITIONING = bigquery.TimePartitioning(field="sent_at")
+CLUSTERING_FIELDS = ["validator_address"]
 
 
 def create_table(
