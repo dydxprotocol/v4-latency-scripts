@@ -128,7 +128,7 @@ def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
 async def listen_to_block_stream_and_place_orders(batch_writer):
     # Setup clients to broadcast
     wallet = LocalWallet.from_mnemonic(DYDX_MNEMONIC, BECH32_PREFIX)
-    client, ledger_client = setup_clients("dydx-grpc.polkachu.com:23890")
+    client, ledger_client = setup_clients(config["full_node_submission_address"])
 
     subaccount = Subaccount(wallet, 0)
     market = get_markets_data(client, MARKET)
