@@ -118,6 +118,7 @@ def save_last_processed_timestamps(timestamps):
 
 def run_query(client, query, params, last_processed_timestamp):
     params["timestamp"] = last_processed_timestamp
+    logging.info(f"Running BQ query `{query[:100]}...` with params: {params}")
     query_job = client.query(
         query,
         job_config=bigquery.QueryJobConfig(
@@ -128,6 +129,7 @@ def run_query(client, query, params, last_processed_timestamp):
         ),
     )
     results = query_job.result()
+    logging.info("Query complete")
     return results
 
 
@@ -146,16 +148,25 @@ def monitor():
                     query_name, START_TIMESTAMP
                 )
                 results = run_query(client, query, params, last_processed_timestamp)
+
+                # Save the data points by server address
+                addr_to_points = {}
                 metrics = []
-                latest_timestamp = last_processed_timestamp
 
                 # loop through results
+                latest_timestamp = last_processed_timestamp
                 for row in results:
                     timestamp = int(row["received_at"].timestamp())
+
+                    points = addr_to_points.get(row["server_address"], [])
+                    points.append((timestamp, [row["latency"]]))
+                    addr_to_points[row["server_address"]] = points
+
+                    latest_timestamp = row["received_at"]
                     tags = [
                         f"server_address:{row['server_address']}",
                         f"service_name:v4-latency-scripts",
-                        "environment:test",
+                        "environment:mainnet",
                     ]
                     metric = {
                         "metric": metric_name,
@@ -163,14 +174,25 @@ def monitor():
                         "tags": tags,
                     }
                     metrics.append(metric)
-                    latest_timestamp = row["received_at"]
+
+                # Send one distribution metric per server address
+                for server_addr, points in addr_to_points.items():
+                    tags = [
+                        f"server_address:{server_addr}",
+                        "service_name:v4-latency-scripts",
+                        "environment:test",
+                    ]
+                    logging.info(f"Sending {len(points)} dist points for {server_addr} to Datadog")
+                    api.Distribution.send(metric=metric_name + "_dist", points=points, tags=tags)
 
                 if metrics:
-                    logging.info("sending_metrics")
+                    logging.info(f"Sending {len(metrics)} metrics to Datadog")
                     api.Metric.send(metrics)
 
                 last_processed_timestamps[query_name] = str(latest_timestamp)
             save_last_processed_timestamps(last_processed_timestamps)
+
+            logging.info(f"Sleeping for {POLL_INTERVAL} seconds")
             time.sleep(POLL_INTERVAL)
         except Exception as e:
             logging.error(f"An error occurred: {e}")
