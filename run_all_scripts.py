@@ -44,15 +44,15 @@ SCRIPT_CONFIGS = {
         "args": ["--server_address", FULL_NODE_ADDRESS_1],
         "time_threshold": timedelta(seconds=90),
     },
-    "grpc_stream "
-    + FULL_NODE_ADDRESS_2: {
-        "script_name": "listen_to_grpc_stream.py",
-        "table_id": "full_node_stream.responses",
-        "timestamp_column": "received_at",
-        "filter": 'server_address = "{address}"'.format(address=FULL_NODE_ADDRESS_2),
-        "args": ["--server_address", FULL_NODE_ADDRESS_2],
-        "time_threshold": timedelta(seconds=90),
-    },
+    # "grpc_stream "
+    # + FULL_NODE_ADDRESS_2: {
+    #     "script_name": "listen_to_grpc_stream.py",
+    #     "table_id": "full_node_stream.responses",
+    #     "timestamp_column": "received_at",
+    #     "filter": 'server_address = "{address}"'.format(address=FULL_NODE_ADDRESS_2),
+    #     "args": ["--server_address", FULL_NODE_ADDRESS_2],
+    #     "time_threshold": timedelta(seconds=90),
+    # },
     "grpc_stream "
     + FULL_NODE_ADDRESS_3: {
         "script_name": "listen_to_grpc_stream.py",
@@ -135,7 +135,7 @@ def check_and_restart_script(
             logging.info(
                 f"Latest timestamp for table {table_id} for script {script_name} is {latest_timestamp}, restarting {config_name}..."
             )
-            process.terminate()
+            process.kill()
             process.wait()
             return start_script(script_name, args)
         else:
