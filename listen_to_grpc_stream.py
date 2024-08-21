@@ -69,7 +69,8 @@ GRPC_OPTIONS = [
 
 def process_message(message, server_address):
     # Convert the protobuf message to a json
-    message_json = MessageToJson(message)
+    # use indent=None to trim whitespace and reduce message size
+    message_json = MessageToJson(message, indent=None)
     return {
         "received_at": datetime.utcnow().isoformat("T") + "Z",
         "server_address": server_address,
