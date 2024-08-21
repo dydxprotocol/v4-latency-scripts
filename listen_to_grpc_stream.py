@@ -2,7 +2,6 @@
 
 Usage: python listen_to_grpc_stream.py --server_address $SERVER_ADDRESS_WITH_PORT
 """
-
 import grpc
 import json
 import asyncio
@@ -42,8 +41,7 @@ BATCH_SIZE = 5000
 BATCH_TIMEOUT = 10
 
 MAX_RETRIES_PER_DAY = 100
-RETRY_DELAY = 30
-
+RETRY_DELAY = 5
 WORKER_COUNT = 8
 
 GRPC_OPTIONS = [
@@ -92,6 +90,7 @@ def process_error(error_msg, server_address):
 async def listen_to_stream_and_write_to_bq(channel, batch_writer, server_address):
     retry_count = 0
     start_time = datetime.utcnow()
+
     while retry_count < MAX_RETRIES_PER_DAY:
         try:
             stub = QueryStub(channel)
@@ -106,7 +105,6 @@ async def listen_to_stream_and_write_to_bq(channel, batch_writer, server_address
             await batch_writer.enqueue_data(
                 process_error("Stream ended", server_address)
             )
-            break  # Break out of the loop if connection is successful and messages are processed
         except grpc.aio.AioRpcError as e:
             # Handle gRPC-specific errors here
             if e.code() in [
@@ -114,10 +112,6 @@ async def listen_to_stream_and_write_to_bq(channel, batch_writer, server_address
                 grpc.StatusCode.DEADLINE_EXCEEDED,
             ]:
                 retry_count += 1
-                print(
-                    f"Connection failed, retrying... ({retry_count}/{MAX_RETRIES_PER_DAY})"
-                )
-                await asyncio.sleep(RETRY_DELAY)  # Wait before retrying
             else:
                 # For other gRPC errors, write the error and break the loop
                 await batch_writer.enqueue_data(
@@ -126,18 +120,22 @@ async def listen_to_stream_and_write_to_bq(channel, batch_writer, server_address
                         server_address,
                     )
                 )
-                break
         except Exception as e:
             # Handle other possible errors
             await batch_writer.enqueue_data(
                 process_error(f"Unexpected error in stream: {e}", server_address)
             )
-            break
 
         # Check if a day has passed since the start time, reset retry count if needed
         if datetime.utcnow() - start_time > timedelta(days=1):
             retry_count = 0
             start_time = datetime.utcnow()
+
+        # Sleep before retrying
+        print(
+            f"Connection failed, retrying... ({retry_count}/{MAX_RETRIES_PER_DAY})"
+        )
+        await asyncio.sleep(RETRY_DELAY)
 
     if retry_count == MAX_RETRIES_PER_DAY:
         await batch_writer.enqueue_data(
