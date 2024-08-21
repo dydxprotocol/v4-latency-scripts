@@ -107,7 +107,11 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
         ]
         logging.info(f"Placing orders {num_blocks_placed}")
         current_block = client.get_current_block()
-        asyncio.create_task(
+
+        # await the order placement task to avoid lapping and scheduling a
+        # second  in case it takes longer than PLACE_INTERVAL
+        start_time = time.monotonic()
+        await asyncio.create_task(
             place_orders(
                 ledger_client,
                 current_block,
@@ -115,10 +119,15 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
                 batch_writer,
             )
         )
+        elapsed_time = time.monotonic() - start_time
+
         client_id += 1
         num_blocks_placed += 1
+
         # place orders every PLACE_INTERVAL seconds to avoid hitting the place stateful order limit
-        await asyncio.sleep(PLACE_INTERVAL)
+        sleep_time = max(0.0, PLACE_INTERVAL - elapsed_time)
+        await asyncio.sleep(sleep_time)
+
 
 
 async def main():
