@@ -6,7 +6,9 @@ Usage: python run_all_scripts.py
 
 import json
 import logging
+import signal
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
@@ -22,9 +24,6 @@ with open("config.json", "r") as config_file:
 
 # Constants
 PROJECT_ID = config["bigquery_project_id"]
-FULL_NODE_ADDRESS_1 = config["full_node_address_1"]
-FULL_NODE_ADDRESS_2 = config["full_node_address_2"]
-FULL_NODE_ADDRESS_3 = config["full_node_address_3"]
 CHECK_INTERVAL = 250  # Check every 250 seconds
 
 SCRIPT_CONFIGS = {
@@ -34,33 +33,6 @@ SCRIPT_CONFIGS = {
         "timestamp_column": "received_at",
         "filter": "",
         "args": [],
-        "time_threshold": timedelta(seconds=90),
-    },
-    "grpc_stream "
-    + FULL_NODE_ADDRESS_1: {
-        "script_name": "listen_to_grpc_stream.py",
-        "table_id": "full_node_stream.responses",
-        "timestamp_column": "received_at",
-        "filter": 'server_address = "{address}"'.format(address=FULL_NODE_ADDRESS_1),
-        "args": ["--server_address", FULL_NODE_ADDRESS_1],
-        "time_threshold": timedelta(seconds=90),
-    },
-    # "grpc_stream "
-    # + FULL_NODE_ADDRESS_2: {
-    #     "script_name": "listen_to_grpc_stream.py",
-    #     "table_id": "full_node_stream.responses",
-    #     "timestamp_column": "received_at",
-    #     "filter": 'server_address = "{address}"'.format(address=FULL_NODE_ADDRESS_2),
-    #     "args": ["--server_address", FULL_NODE_ADDRESS_2],
-    #     "time_threshold": timedelta(seconds=90),
-    # },
-    "grpc_stream "
-    + FULL_NODE_ADDRESS_3: {
-        "script_name": "listen_to_grpc_stream.py",
-        "table_id": "full_node_stream.responses",
-        "timestamp_column": "received_at",
-        "filter": 'server_address = "{address}"'.format(address=FULL_NODE_ADDRESS_3),
-        "args": ["--server_address", FULL_NODE_ADDRESS_3],
         "time_threshold": timedelta(seconds=90),
     },
     "place_orders": {
@@ -89,6 +61,17 @@ SCRIPT_CONFIGS = {
     },
     # Add more scripts with their corresponding table IDs, timestamp columns, and filters here
 }
+
+# Include full node stream gRPC listeners
+for addr in config["full_node_addresses"]:
+    SCRIPT_CONFIGS[f"grpc_stream {addr}"] = {
+        "script_name": "listen_to_grpc_stream.py",
+        "table_id": "full_node_stream.responses",
+        "timestamp_column": "received_at",
+        "filter": f'server_address = "{addr}"',
+        "args": ["--server_address", addr],
+        "time_threshold": timedelta(seconds=90),
+    }
 
 
 def get_latest_timestamp(table_id, timestamp_column, filter_condition):
@@ -147,6 +130,16 @@ def main():
         config: start_script(info["script_name"], info["args"])
         for config, info in SCRIPT_CONFIGS.items()
     }
+
+    # Gracefully handle Ctrl+C
+    def signal_handler(sig, frame):
+        logging.info("Received termination signal, shutting down...")
+        for process in processes.values():
+            process.terminate()
+            process.wait()
+        sys.exit(0)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     time.sleep(CHECK_INTERVAL)
 
