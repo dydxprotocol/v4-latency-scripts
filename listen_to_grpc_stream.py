@@ -77,7 +77,7 @@ def process_message(message, server_address):
 
 
 def process_error(error_msg, server_address):
-    print(error_msg)
+    logging.error(error_msg)
     return {
         "received_at": datetime.utcnow().isoformat("T") + "Z",
         "server_address": server_address,
@@ -131,7 +131,7 @@ async def listen_to_stream_and_write_to_bq(channel, batch_writer, server_address
             start_time = datetime.utcnow()
 
         # Sleep before retrying
-        print(
+        logging.error(
             f"Connection failed, retrying... ({retry_count}/{MAX_RETRIES_PER_DAY})"
         )
         await asyncio.sleep(RETRY_DELAY)
