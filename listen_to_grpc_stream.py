@@ -2,22 +2,21 @@
 
 Usage: python listen_to_grpc_stream.py --server_address $SERVER_ADDRESS_WITH_PORT
 """
-import grpc
-import json
+import argparse
 import asyncio
+import json
+import logging
 import uuid
 from datetime import datetime, timedelta
-import argparse
+from logging.handlers import RotatingFileHandler
 
+import grpc
 from google.cloud import bigquery
 from google.cloud.bigquery import SchemaField
 from google.protobuf.json_format import MessageToJson
-
-# Import your generated gRPC classes
 from v4_proto.dydxprotocol.clob.query_pb2 import StreamOrderbookUpdatesRequest
 from v4_proto.dydxprotocol.clob.query_pb2_grpc import QueryStub
 
-# Import the BigQuery helpers
 from bq_helpers import create_table, BatchWriter
 
 # Dataset configuration
@@ -167,6 +166,18 @@ if __name__ == "__main__":
         help="The server address in the format ip:port",
     )
     args = parser.parse_args()
+
+    log_id = args.server_address.replace(":", "_")
+    handler = RotatingFileHandler(
+        f"listen_to_grpc_stream_{log_id}.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5
+    )
+    logging.basicConfig(
+        handlers=[handler],
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
 
     create_table(DATASET_ID, TABLE_ID, SCHEMA, TIME_PARTITIONING, CLUSTERING_FIELDS)
     asyncio.run(main(args.server_address))

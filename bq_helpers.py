@@ -1,9 +1,9 @@
 import asyncio
 from datetime import datetime
+
 from google.cloud import bigquery
 from google.cloud.bigquery import SchemaField
 from google.cloud.exceptions import NotFound
-from collections import deque
 
 # Schema and partitioning
 SCHEMA = [

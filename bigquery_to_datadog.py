@@ -1,17 +1,11 @@
+import json
+import logging
+import os
+import time
+from logging.handlers import RotatingFileHandler
+
 import google.cloud.bigquery as bigquery
 from datadog import initialize, api
-import time
-import json
-import os
-import logging
-
-
-logging.basicConfig(
-    filename="bigquery_to_dd.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-
 
 with open("config.json", "r") as config_file:
     config = json.load(config_file)
@@ -200,4 +194,14 @@ def monitor():
 
 
 if __name__ == "__main__":
+    handler = RotatingFileHandler(
+        "bigquery_to_datadog.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5
+    )
+    logging.basicConfig(
+        handlers=[handler],
+        level=logging.DEBUG,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
     monitor()

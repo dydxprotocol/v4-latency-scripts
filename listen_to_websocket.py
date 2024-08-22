@@ -5,35 +5,23 @@ Usage: python listen_to_websocket.py
 """
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import uuid
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
+import websockets
+from google.cloud import bigquery
+from google.cloud.bigquery import SchemaField
 from v4_client_py.clients.constants import Network
 
 # Import the BigQuery helpers
 from bq_helpers import create_table, BatchWriter
 
-from google.cloud import bigquery
-from google.cloud.bigquery import SchemaField
-from google.protobuf.json_format import MessageToJson
-
-import asyncio
-import websockets
-import json
-
-
 # Loading mnemonic from config.json
 with open("config.json", "r") as config_file:
     config_json = json.load(config_file)
-
-logging.basicConfig(
-    filename=datetime.now().strftime("websocket.log"),
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 
 DATASET_ID = "indexer_stream"
 TABLE_ID = "responses"
@@ -128,5 +116,16 @@ async def main():
 
 
 if __name__ == "__main__":
+    handler = RotatingFileHandler(
+        "listen_to_websocket.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5
+    )
+    logging.basicConfig(
+        handlers=[handler],
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+
     create_table(DATASET_ID, TABLE_ID, SCHEMA, TIME_PARTITIONING)
     asyncio.run(main())

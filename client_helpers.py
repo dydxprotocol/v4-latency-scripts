@@ -1,8 +1,7 @@
 # Helpers to help with placing orders and database setup
-
+import asyncio
 import json
 import logging
-import asyncio
 from datetime import datetime
 from random import randrange
 

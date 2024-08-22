@@ -5,15 +5,10 @@ Usage: python place_stateful_orders.py
 """
 
 import asyncio
-import json
 import logging
 import time
-import threading
+from logging.handlers import RotatingFileHandler
 from random import randrange
-from datetime import datetime
-
-from google.cloud import bigquery
-from google.cloud.bigquery import SchemaField
 
 from v4_client_py.chain.aerial.wallet import LocalWallet
 from v4_client_py.clients import Subaccount
@@ -22,10 +17,7 @@ from v4_client_py.clients.helpers.chain_helpers import OrderSide
 from v4_client_py.clients.helpers.chain_helpers import (
     Order_TimeInForce,
     ORDER_FLAGS_LONG_TERM,
-    Order,
 )
-
-# The idea of this experiment is to see what is the lag between placing a stateful order and when it shows up in a stream
 
 # Import helpers
 from bq_helpers import (
@@ -42,6 +34,8 @@ from client_helpers import (
     precompute_order,
     setup_clients,
 )
+
+# The idea of this experiment is to see what is the lag between placing a stateful order and when it shows up in a stream
 
 # Dataset configuration
 DATASET_ID = "latency_experiments"
@@ -66,13 +60,6 @@ MAX_LEN_ORDERS = 20000
 DYDX_MNEMONIC = config["stateful_mnemonic"]
 GTBT_DELTA = 5
 PLACE_INTERVAL = 10
-
-# Logging setup
-logging.basicConfig(
-    filename=f"stateful_maker_orders.log",
-    level=logging.ERROR,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 
 
 async def listen_to_block_stream_and_place_orders(batch_writer):
@@ -140,5 +127,15 @@ async def main():
 
 
 if __name__ == "__main__":
+    handler = RotatingFileHandler(
+        "place_stateful_orders.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5
+    )
+    logging.basicConfig(
+        handlers=[handler],
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
     create_table(DATASET_ID, TABLE_ID, SCHEMA, TIME_PARTITIONING, CLUSTERING_FIELDS)
     asyncio.run(main())

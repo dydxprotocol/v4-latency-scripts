@@ -5,22 +5,19 @@ Usage: python place_orders.py
 """
 
 import asyncio
-import json
 import logging
-import time
 import threading
+import time
+from logging.handlers import RotatingFileHandler
 from random import randrange
-from datetime import datetime
 
-from v4_client_py.chain.aerial.client import LedgerClient, NetworkConfig
 from v4_client_py.chain.aerial.wallet import LocalWallet
-from v4_client_py.clients import CompositeClient, Subaccount
-from v4_client_py.clients.constants import BECH32_PREFIX, Network
+from v4_client_py.clients import Subaccount
+from v4_client_py.clients.constants import BECH32_PREFIX
 from v4_client_py.clients.helpers.chain_helpers import OrderSide
 from v4_client_py.clients.helpers.chain_helpers import (
     Order_TimeInForce,
     ORDER_FLAGS_SHORT_TERM,
-    Order,
 )
 
 from bq_helpers import (
@@ -61,13 +58,6 @@ WAIT_BLOCKS = 5
 MAX_LEN_ORDERS = 50
 DYDX_MNEMONIC = config["maker_mnemonic"]
 GTB_DELTA = 4
-
-# Logging setup
-logging.basicConfig(
-    filename=f"maker_orders.log",
-    level=logging.ERROR,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 
 
 # This presigns all the orders and puts it into a dictionary that is used to write later
@@ -172,5 +162,16 @@ async def main():
 
 
 if __name__ == "__main__":
+    handler = RotatingFileHandler(
+        "place_orders.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5
+    )
+    logging.basicConfig(
+        handlers=[handler],
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+
     create_table(DATASET_ID, TABLE_ID, SCHEMA, TIME_PARTITIONING, CLUSTERING_FIELDS)
     asyncio.run(main())

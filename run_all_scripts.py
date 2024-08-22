@@ -5,11 +5,12 @@ Usage: python run_all_scripts.py
 """
 
 import json
-import os
-import time
-import subprocess
 import logging
+import subprocess
+import time
 from datetime import datetime, timedelta, timezone
+from logging.handlers import RotatingFileHandler
+
 from google.cloud import bigquery
 
 # Set up the BigQuery client
@@ -88,12 +89,6 @@ SCRIPT_CONFIGS = {
     },
     # Add more scripts with their corresponding table IDs, timestamp columns, and filters here
 }
-
-logging.basicConfig(
-    filename=datetime.now().strftime("run_all_scripts_%H_%M_%d_%m_%Y.log"),
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 
 
 def get_latest_timestamp(table_id, timestamp_column, filter_condition):
@@ -184,4 +179,14 @@ def main():
 
 
 if __name__ == "__main__":
+    handler = RotatingFileHandler(
+        "run_all_scripts.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5
+    )
+    logging.basicConfig(
+        handlers=[handler],
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
     main()

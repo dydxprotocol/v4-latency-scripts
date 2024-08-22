@@ -5,15 +5,10 @@ Usage: python place_replacement_orders.py
 """
 
 import asyncio
-import json
 import logging
-import time
 import threading
-from random import randrange
-from datetime import datetime
-
-from google.cloud import bigquery
-from google.cloud.bigquery import SchemaField
+import time
+from logging.handlers import RotatingFileHandler
 
 from v4_client_py.chain.aerial.wallet import LocalWallet
 from v4_client_py.clients import Subaccount
@@ -22,10 +17,7 @@ from v4_client_py.clients.helpers.chain_helpers import OrderSide
 from v4_client_py.clients.helpers.chain_helpers import (
     Order_TimeInForce,
     ORDER_FLAGS_SHORT_TERM,
-    Order,
 )
-
-# The idea of this experiment is to see what is the lag between the remove and place messages when we replace orders
 
 # Import helpers
 from bq_helpers import (
@@ -42,6 +34,8 @@ from client_helpers import (
     precompute_order,
     setup_clients,
 )
+
+# The idea of this experiment is to see what is the lag between the remove and place messages when we replace orders
 
 
 # Dataset configuration
@@ -68,13 +62,6 @@ WAIT_BLOCKS = 10
 MAX_LEN_ORDERS = 20000
 DYDX_MNEMONIC = config["maker_mnemonic"]
 GTB_DELTA = 15
-
-# Logging setup
-logging.basicConfig(
-    filename=f"order_logs_{GTB_DELTA}.log",
-    level=logging.ERROR,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 
 
 # This presigns all the orders and puts it into a dictionary that is used to write later
@@ -179,5 +166,16 @@ async def main():
 
 
 if __name__ == "__main__":
+    handler = RotatingFileHandler(
+        "place_replacement_orders.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5
+    )
+    logging.basicConfig(
+        handlers=[handler],
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+
     create_table(DATASET_ID, TABLE_ID, SCHEMA, TIME_PARTITIONING, CLUSTERING_FIELDS)
     asyncio.run(main())
