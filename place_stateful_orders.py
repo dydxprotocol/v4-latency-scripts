@@ -111,6 +111,8 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
 
     logging.info("Finished placing orders")
 
+    logging.info("Finished placing orders")
+
 
 
 async def main():
