@@ -115,6 +115,8 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
         sleep_time = max(0.0, PLACE_INTERVAL - elapsed_time)
         await asyncio.sleep(sleep_time)
 
+    logging.info("Finished placing orders")
+
 
 
 async def main():

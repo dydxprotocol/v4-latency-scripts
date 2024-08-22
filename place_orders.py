@@ -130,6 +130,7 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
     previous_block = 0
     num_blocks_placed = 0
     time.sleep(5)
+    tasks = []
     while num_blocks_placed < NUM_BLOCKS:
         current_block = client.get_current_block()
         if previous_block < current_block:
@@ -137,7 +138,7 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
             with lock:
                 if current_block in orders:
                     logging.info(f"Placing orders for block: {current_block}")
-                    asyncio.create_task(
+                    task = asyncio.create_task(
                         place_orders(
                             ledger_client,
                             current_block,
@@ -145,11 +146,16 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
                             batch_writer,
                         )
                     )
+                    tasks.append(task)
                     orders.pop(current_block)
             previous_block = current_block
             num_blocks_placed += 1
 
         await asyncio.sleep(0.01)
+
+    logging.info("Finished placing orders, awaiting task completion...")
+    await asyncio.gather(*tasks)
+    logging.info("Done - shutting down")
 
 
 async def main():
