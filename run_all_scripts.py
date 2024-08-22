@@ -107,22 +107,32 @@ def check_and_restart_script(
     latest_timestamp = get_latest_timestamp(
         table_id, timestamp_column, filter_condition
     )
+
+    should_restart = False
     if latest_timestamp:
         current_time = datetime.utcnow().replace(tzinfo=None)
         if current_time - latest_timestamp > time_threshold:
             logging.info(
-                f"Latest timestamp for table {table_id} for script {script_name} is {latest_timestamp}, restarting {config_name}..."
+                f"Latest timestamp for table {table_id} for script {script_name} "
+                f"is {latest_timestamp}, restarting {config_name}..."
             )
-            process.kill()
-            process.wait()
-            return start_script(script_name, args)
+            should_restart = True
         else:
             logging.info(
-                f"Latest timestamp for table {table_id} for script {script_name} is {latest_timestamp}, {config_name} is working fine."
+                f"Latest timestamp for table {table_id} for script {script_name} "
+                f"is {latest_timestamp}, {config_name} is working fine."
             )
     else:
-        logging.info(f"Failed to retrieve the latest timestamp for table {table_id}.")
-    return process
+        logging.info(f"Failed to retrieve the latest timestamp for table "
+                     f"{table_id}, restarting {config_name}...")
+        should_restart = True
+
+    if should_restart:
+        process.kill()
+        process.wait()
+        return start_script(script_name, args)
+    else:
+        return process
 
 
 def main():
