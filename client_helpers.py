@@ -57,7 +57,8 @@ def place_order(client, block, msg_and_order, batch_writer):
     except Exception as error:
         err_str = str(error)
         logging.error(f"Order failed: {msg_and_order[1]} {err_str}")
-    return
+        return err_str
+    return None
 
 
 def precompute_order(
@@ -129,6 +130,7 @@ def precompute_order(
 async def place_orders(client, block, msg_and_orders, batch_writer):
     # spin a new event loop to write to BQ and broadcast orders concurrently
     loop = asyncio.get_running_loop()
+    tasks = []
     for msg_and_order in msg_and_orders:
         logging.info(f"Logging order: {msg_and_order[0]}")
         # Record order information in BigQuery
@@ -143,15 +145,16 @@ async def place_orders(client, block, msg_and_orders, batch_writer):
             "good_til_block": order.good_til_block,
             "client_id": order.order_id.client_id,
         }
-        loop = asyncio.get_running_loop()
         # write to BQ
         await batch_writer.enqueue_data(order_data)
         # broadcast order
-        loop.run_in_executor(
+        tasks.append(loop.run_in_executor(
             None,
             place_order,
             client,
             block,
             msg_and_order,
             batch_writer,
-        )
+        ))
+
+    return await asyncio.gather(*tasks)
