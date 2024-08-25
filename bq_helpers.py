@@ -9,8 +9,8 @@ from google.cloud.exceptions import NotFound
 
 import bigquery_gcs_insert as gcs_insert
 
-# Schema and partitioning
-SCHEMA = [
+# Schema and partitioning used across all order types
+PLACE_ORDER_SCHEMA = [
     SchemaField("sent_at", "TIMESTAMP", mode="REQUIRED"),
     SchemaField("uuid", "STRING", mode="REQUIRED"),
     SchemaField("validator_address", "STRING", mode="REQUIRED"),
@@ -20,8 +20,8 @@ SCHEMA = [
     SchemaField("good_til_block", "INT64", mode="REQUIRED"),
     SchemaField("client_id", "INT64", mode="REQUIRED"),
 ]
-TIME_PARTITIONING = bigquery.TimePartitioning(field="sent_at")
-CLUSTERING_FIELDS = ["validator_address"]
+PLACE_ORDER_TIME_PARTITIONING = bigquery.TimePartitioning(field="sent_at")
+PLACE_ORDER_CLUSTERING_FIELDS = ["validator_address"]
 
 
 def create_table(

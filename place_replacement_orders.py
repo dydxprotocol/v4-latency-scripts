@@ -23,9 +23,9 @@ from v4_client_py.clients.helpers.chain_helpers import (
 from bq_helpers import (
     create_table,
     BatchWriter,
-    CLUSTERING_FIELDS,
-    SCHEMA,
-    TIME_PARTITIONING,
+    PLACE_ORDER_CLUSTERING_FIELDS,
+    PLACE_ORDER_SCHEMA,
+    PLACE_ORDER_TIME_PARTITIONING,
 )
 from client_helpers import (
     get_markets_data,
@@ -182,5 +182,5 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
-    create_table(DATASET_ID, TABLE_ID, SCHEMA, TIME_PARTITIONING, CLUSTERING_FIELDS)
+    create_table(DATASET_ID, TABLE_ID, PLACE_ORDER_SCHEMA, PLACE_ORDER_TIME_PARTITIONING, PLACE_ORDER_CLUSTERING_FIELDS)
     asyncio.run(main())
