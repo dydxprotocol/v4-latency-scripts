@@ -1,5 +1,5 @@
 google-cloud-bigquery==3.19.0
-grpcio==1.66.0
+google-cloud-storage==2.18.2
 requests~=2.32.2
 v4-client-py==4.0.0
 v4-proto==5.2.2
