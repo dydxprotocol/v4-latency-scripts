@@ -1,10 +1,13 @@
 import asyncio
 import logging
 from datetime import datetime
+from typing import List, Callable
 
-from google.cloud import bigquery
+from google.cloud import bigquery, storage
 from google.cloud.bigquery import SchemaField
 from google.cloud.exceptions import NotFound
+
+import bigquery_gcs_insert as gcs_insert
 
 # Schema and partitioning
 SCHEMA = [
@@ -22,7 +25,7 @@ CLUSTERING_FIELDS = ["validator_address"]
 
 
 def create_table(
-    dataset_id, table_id, schema, time_partitioning=None, clustering_fields=None
+        dataset_id, table_id, schema, time_partitioning=None, clustering_fields=None
 ):
     """Creates a BigQuery table with the specified schema, time partitioning, and clustering."""
     bq_client = bigquery.Client()
@@ -44,7 +47,7 @@ class BatchWriter:
     """Handles batching and inserting data into BigQuery."""
 
     def __init__(
-        self, dataset_id, table_id, worker_count=8, batch_size=5000, batch_timeout=10
+            self, dataset_id, table_id, worker_count=8, batch_size=5000, batch_timeout=10
     ):
         self.bq_client = bigquery.Client()
         self.queue = asyncio.Queue()
@@ -78,7 +81,7 @@ class BatchWriter:
         while True:
             try:
                 elapsed_time = (
-                    datetime.utcnow() - self.last_flush_time
+                        datetime.utcnow() - self.last_flush_time
                 ).total_seconds()
                 dynamic_timeout = max(0, self.batch_timeout - elapsed_time)
                 data = await asyncio.wait_for(self.queue.get(), timeout=dynamic_timeout)
@@ -91,3 +94,57 @@ class BatchWriter:
                 if data_buffer:
                     await self.flush_data(data_buffer)
                     data_buffer = []
+
+
+class GCSWriter:
+    """
+    Handles sideloading data into BigQuery via Google Cloud Storage, for large
+    rows that cannot be directly inserted.
+
+    Note that JSON fields need to be parsed into Python objects, not strings.
+    """
+    def __init__(
+            self,
+            dataset_id: str,
+            table_name: str,
+            schema: List[bigquery.SchemaField],
+            bucket_name: str,
+            location: str = "EU"
+    ):
+        self.client = bigquery.Client()
+        self.queue = asyncio.Queue()
+
+        project_id = self.client.project
+        table_id = f"{project_id}.{dataset_id}.{table_name}"
+        self.table = bigquery.Table(table_id, schema=schema)
+
+        self.bucket = gcs_insert.get_or_create_bucket(
+            storage.Client(), bucket_name, location
+        )
+
+        # Default middleware function does not modify data before insert
+        self.middleware_fn = lambda x: x
+
+    async def enqueue_data(self, data):
+        await self.queue.put(data)
+
+    async def gcs_writer_loop(self):
+        while True:
+            try:
+                data = await self.queue.get()
+                await asyncio.to_thread(self._process_and_insert, data)
+            except Exception as e:
+                logging.error(f"Error inserting data: {e}")
+
+    def _process_and_insert(self, data: dict) -> None:
+        data = self.middleware_fn(data)
+        return gcs_insert.insert_via_gcs(
+            self.client, self.bucket, self.table, [data]
+        )
+
+    def set_middleware(self, middleware_fn: Callable[[dict], dict]):
+        """
+        Set a middleware function that pre-processes each row before inserting
+        it.
+        """
+        self.middleware_fn = middleware_fn

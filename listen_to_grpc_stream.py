@@ -17,12 +17,15 @@ from google.protobuf.json_format import MessageToJson
 from v4_proto.dydxprotocol.clob.query_pb2 import StreamOrderbookUpdatesRequest
 from v4_proto.dydxprotocol.clob.query_pb2_grpc import QueryStub
 
-from bq_helpers import create_table, BatchWriter
+from bq_helpers import create_table, BatchWriter, GCSWriter
 
 # Dataset configuration
 DATASET_ID = "full_node_stream"
 TABLE_ID = "responses"
 CLOB_PAIR_IDS = range(133)
+
+# If data to too large for direct insert, use this GCS bucket to sideload
+GCS_BUCKET = "full_node_stream_sideload"
 
 # Schema, partitioning, and clustering
 SCHEMA = [
@@ -64,12 +67,13 @@ GRPC_OPTIONS = [
 ]
 
 
-def process_message(message, server_address):
+def process_message(message, server_address) -> dict:
     # Convert the protobuf message to a json
     # use indent=None to trim whitespace and reduce message size
+    received_at = datetime.utcnow().isoformat("T") + "Z"
     message_json = MessageToJson(message, indent=None)
     return {
-        "received_at": datetime.utcnow().isoformat("T") + "Z",
+        "received_at": received_at,
         "server_address": server_address,
         "uuid": str(uuid.uuid4()),
         "response": message_json,
@@ -77,16 +81,19 @@ def process_message(message, server_address):
 
 
 def process_error(error_msg, server_address):
-    logging.error(error_msg)
-    return {
+    data = {
         "received_at": datetime.utcnow().isoformat("T") + "Z",
         "server_address": server_address,
         "uuid": str(uuid.uuid4()),
         "response": json.dumps({"error": error_msg}),
     }
+    logging.error(data)
+    return data
 
 
-async def listen_to_stream_and_write_to_bq(channel, batch_writer, server_address):
+async def listen_to_stream_and_write_to_bq(
+        channel, batch_writer, gcs_writer, server_address
+):
     retry_count = 0
     start_time = datetime.utcnow()
 
@@ -97,9 +104,14 @@ async def listen_to_stream_and_write_to_bq(channel, batch_writer, server_address
 
             # Here, we initiate the streaming call and asynchronously iterate over the responses
             async for response in stub.StreamOrderbookUpdates(request):
-                await batch_writer.enqueue_data(
-                    process_message(response, server_address)
-                )
+                row = process_message(response, server_address)
+
+                # If the row is too large, sideload into BQ via GCS
+                too_large_for_direct_insert = len(row['response']) > 1_000_000
+                if too_large_for_direct_insert:
+                    await gcs_writer.enqueue_data(row)
+                else:
+                    await batch_writer.enqueue_data(row)
 
             await batch_writer.enqueue_data(
                 process_error("Stream ended", server_address)
@@ -144,16 +156,34 @@ async def listen_to_stream_and_write_to_bq(channel, batch_writer, server_address
         )
 
 
+def preprocess_row_for_gcs(row: dict) -> dict:
+    """
+    When writing via GCS, the JSON fields must be Python objects rather than
+    JSON strings.
+    """
+    row['response'] = json.loads(row['response'])
+    return row
+
+
 async def main(server_address):
+    # Writer for direct BigQuery inserts
     batch_writer = BatchWriter(
         DATASET_ID, TABLE_ID, WORKER_COUNT, BATCH_SIZE, BATCH_TIMEOUT
     )
     batch_writer_task = asyncio.create_task(batch_writer.batch_writer_loop())
+
+    # Writer for exceptionally large rows (book snapshots)
+    gcs_writer = GCSWriter(DATASET_ID, TABLE_ID, SCHEMA, GCS_BUCKET)
+    gcs_writer.set_middleware(preprocess_row_for_gcs)
+    gcs_writer_task = asyncio.create_task(gcs_writer.gcs_writer_loop())
+
     # Adjust to use secure channel if needed
     async with grpc.aio.insecure_channel(server_address, GRPC_OPTIONS) as channel:
-        await listen_to_stream_and_write_to_bq(channel, batch_writer, server_address)
+        await listen_to_stream_and_write_to_bq(
+            channel, batch_writer, gcs_writer, server_address
+        )
 
-    await batch_writer_task
+    await asyncio.gather(batch_writer_task, gcs_writer_task)
 
 
 if __name__ == "__main__":
