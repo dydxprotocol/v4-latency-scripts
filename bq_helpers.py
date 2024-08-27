@@ -1,9 +1,10 @@
 import asyncio
+import logging
 from datetime import datetime
+
 from google.cloud import bigquery
 from google.cloud.bigquery import SchemaField
 from google.cloud.exceptions import NotFound
-from collections import deque
 
 # Schema and partitioning
 SCHEMA = [
@@ -30,13 +31,13 @@ def create_table(
 
     try:
         bq_client.get_table(table_ref)
-        print(f"Table {table_id} already exists.")
+        logging.info(f"Table {table_id} already exists.")
     except NotFound:
         table = bigquery.Table(table_ref, schema=schema)
         table.time_partitioning = time_partitioning
         table.clustering_fields = clustering_fields
         bq_client.create_table(table)
-        print(f"Table {table_id} created.")
+        logging.info(f"Table {table_id} created.")
 
 
 class BatchWriter:
@@ -62,9 +63,9 @@ class BatchWriter:
                 self.bq_client.insert_rows_json, self.table_ref, data_buffer
             )
             if errors:
-                print(f"Errors occurred: {errors}")
+                logging.error(f"Errors occurred: {errors}")
         except Exception as e:
-            print(f"Error inserting rows: {e}")
+            logging.error(f"Error inserting rows: {e}")
         finally:
             self.last_flush_time = datetime.utcnow()
 

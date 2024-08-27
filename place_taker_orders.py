@@ -1,13 +1,9 @@
 import asyncio
-import json
 import logging
-import time
 import threading
+import time
+from logging.handlers import RotatingFileHandler
 from random import randrange
-from datetime import datetime
-
-from google.cloud import bigquery
-from google.cloud.bigquery import SchemaField
 
 from v4_client_py.chain.aerial.wallet import LocalWallet
 from v4_client_py.clients import Subaccount
@@ -16,7 +12,6 @@ from v4_client_py.clients.helpers.chain_helpers import OrderSide
 from v4_client_py.clients.helpers.chain_helpers import (
     Order_TimeInForce,
     ORDER_FLAGS_SHORT_TERM,
-    Order,
 )
 
 # Import helpers
@@ -64,13 +59,6 @@ GTB_DELTA = 4
 # how often to place these taker orders
 # if we place too often the address will lose too much money to fees + spread
 PLACE_INTERVAL = 300
-
-# Logging setup
-logging.basicConfig(
-    filename=f"taker_order_logs.log",
-    level=logging.ERROR,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 
 
 # This presigns all the orders and puts it into a dictionary that is used to write later
@@ -149,10 +137,11 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
         current_block = client.get_current_block()
         if previous_block < current_block:
             logging.info(f"New block: {current_block}")
+            task = None
             with lock:
                 if current_block in orders:
                     logging.info(f"Placing orders for block: {current_block}")
-                    asyncio.create_task(
+                    task = asyncio.create_task(
                         place_orders(
                             ledger_client,
                             current_block,
@@ -161,6 +150,8 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
                         )
                     )
                     orders.pop(current_block)
+            if task:
+                await task
             previous_block = current_block
             num_blocks_placed += 1
 
@@ -177,5 +168,15 @@ async def main():
 
 
 if __name__ == "__main__":
+    handler = RotatingFileHandler(
+        "place_taker_orders.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5
+    )
+    logging.basicConfig(
+        handlers=[handler],
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
     create_table(DATASET_ID, TABLE_ID, SCHEMA, TIME_PARTITIONING, CLUSTERING_FIELDS)
     asyncio.run(main())
