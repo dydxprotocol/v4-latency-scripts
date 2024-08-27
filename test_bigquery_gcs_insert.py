@@ -125,6 +125,9 @@ def run_integration_test():
         time.sleep(2)
 
         try:
+            # Try creating the bucket again to test the 'get' in get_or_create
+            _ = get_or_create_bucket(storage.Client(), bucket.name, "EU")
+
             # Insert directly into BigQuery
             errors = client.insert_rows_json(tbl, [test_row_data])
             if errors:

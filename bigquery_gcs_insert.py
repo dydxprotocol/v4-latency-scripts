@@ -12,7 +12,7 @@ from google.cloud import storage, bigquery
 
 
 def get_or_create_bucket(
-        client: storage.Client, name: str, location: str
+        client: storage.Client, name: str, location: str, retries: int = 1
 ) -> storage.Bucket:
     """Get or create a GCS bucket."""
     bucket = client.bucket(name)
@@ -28,7 +28,11 @@ def get_or_create_bucket(
             return bucket
         except Exception as e:
             logging.error(f"Error creating GCS bucket: {e}")
-            raise
+            # Retries in case of two processes trying to create the same bucket
+            # at once, and only one succeeding on the first try
+            if retries > 0:
+                return get_or_create_bucket(client, name, location, retries - 1)
+            raise e
 
 
 def insert_via_gcs(
@@ -93,7 +97,7 @@ def insert_via_gcs(
         n = 10
         for _ in range(n):
             result = load_job.result()
-            logging.info(f"Got job {result} with statue {result.state}")
+            logging.info(f"Got job {result} with state {result.state}")
             if result.state == "DONE":
                 return
             time.sleep(5)
