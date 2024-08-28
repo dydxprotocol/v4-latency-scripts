@@ -35,6 +35,17 @@ def get_or_create_bucket(
             raise e
 
 
+def set_lifecycle_policy(bucket: storage.Bucket, days: int) -> None:
+    """
+    Sets a lifecycle policy to delete objects in the bucket after a given
+    number of days.
+    """
+    bucket.add_lifecycle_delete_rule(age=days)
+    bucket.patch()
+    logging.info(f"Set lifecycle rule to delete objects after {days} "
+                 f"days in bucket {bucket.name}")
+
+
 def insert_via_gcs(
         client: bigquery.Client,
         bucket: storage.Bucket,
@@ -105,4 +116,4 @@ def insert_via_gcs(
 
     except Exception as e:
         logging.error(f"Error during GCS-based insertion: {e}")
-        raise
+        raise e

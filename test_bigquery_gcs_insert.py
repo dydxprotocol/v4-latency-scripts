@@ -128,6 +128,9 @@ def run_integration_test():
             # Try creating the bucket again to test the 'get' in get_or_create
             _ = get_or_create_bucket(storage.Client(), bucket.name, "EU")
 
+            # Just test that this API call executes
+            set_lifecycle_policy(bucket, 1)
+
             # Insert directly into BigQuery
             errors = client.insert_rows_json(tbl, [test_row_data])
             if errors:

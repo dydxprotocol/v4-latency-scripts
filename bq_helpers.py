@@ -122,6 +122,9 @@ class GCSWriter:
             storage.Client(), bucket_name, location
         )
 
+        # Keep bucket data for 1 day
+        gcs_insert.set_lifecycle_policy(self.bucket, 1)
+
         # Default middleware function does not modify data before insert
         self.middleware_fn = lambda x: x
 
