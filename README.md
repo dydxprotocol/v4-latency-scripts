@@ -20,8 +20,20 @@ pip install -r requirements.txt
 ```
 
 # Setup google cloud account
-Add this to `~/.bashrc`. The [service account](https://cloud.google.com/iam/docs/service-accounts-create) should have "BigQuery Admin" access or similar.
+Add this to `~/.bashrc`. The [service account](https://cloud.google.com/iam/docs/service-accounts-create) should have "BigQuery Admin" and 
+"Storage Admin" permissions or similar.
 - `export GOOGLE_APPLICATION_CREDENTIALS="/home/ec2-user/full-node-client/service-account.json"`
+
+# Integration test
+
+After setting up, you can test the script's ability to create and insert into BigQuery --
+both directly and via GCS -- with:
+
+```
+python test_bigquery_gcs_insert.py
+```
+
+This will print error messages if your service account is improperly configured.
 
 # Running it
 ```
