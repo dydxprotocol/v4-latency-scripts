@@ -107,7 +107,7 @@ async def listen_to_stream_and_write_to_bq(
                 row = process_message(response, server_address)
 
                 # If the row is too large, sideload into BQ via GCS
-                too_large_for_direct_insert = len(row['response']) > 1_000_000
+                too_large_for_direct_insert = len(row['response']) > 5_000_000
                 if too_large_for_direct_insert:
                     await gcs_writer.enqueue_data(row)
                 else:
