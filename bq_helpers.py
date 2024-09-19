@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from typing import List, Callable
 
+from google.api_core.exceptions import GoogleAPICallError
 from google.cloud import bigquery, storage
 from google.cloud.bigquery import SchemaField
 from google.cloud.exceptions import NotFound
@@ -67,8 +68,11 @@ class BatchWriter:
             )
             if errors:
                 logging.error(f"Errors occurred: {errors}")
+        # TODO: Catch batch too large thing and fall back to GCS writer
+        except GoogleAPICallError as e:
+            logging.error(f"Error inserting {len(data_buffer)} rows (code = {e.code}): {e}")
         except Exception as e:
-            logging.error(f"Error inserting rows: {e}")
+            logging.error(f"Error inserting {len(data_buffer)} rows: {e}")
         finally:
             self.last_flush_time = datetime.utcnow()
 
