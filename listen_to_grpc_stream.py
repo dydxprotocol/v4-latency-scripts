@@ -22,7 +22,7 @@ from bq_helpers import create_table, BatchWriter, GCSWriter
 # Dataset configuration
 DATASET_ID = "full_node_stream"
 TABLE_ID = "responses"
-CLOB_PAIR_IDS = range(133)
+CLOB_PAIR_IDS = range(144)  # TODO: Make this automatic
 
 # If data to too large for direct insert, use this GCS bucket to sideload
 GCS_BUCKET = "full_node_stream_sideload"
@@ -91,6 +91,7 @@ def process_error(error_msg, server_address):
     return data
 
 
+# TODO: Log message counts every 10 mins
 async def listen_to_stream_and_write_to_bq(
         channel, batch_writer, gcs_writer, server_address
 ):
@@ -107,6 +108,7 @@ async def listen_to_stream_and_write_to_bq(
                 row = process_message(response, server_address)
 
                 # If the row is too large, sideload into BQ via GCS
+                # TODO: Make this automatic based on error when doing normal insert
                 too_large_for_direct_insert = len(row['response']) > 5_000_000
                 if too_large_for_direct_insert:
                     await gcs_writer.enqueue_data(row)
@@ -178,12 +180,14 @@ async def main(server_address):
     gcs_writer_task = asyncio.create_task(gcs_writer.gcs_writer_loop())
 
     # Adjust to use secure channel if needed
+    logging.info(f"Connecting to server at {server_address}...")
     async with grpc.aio.insecure_channel(server_address, GRPC_OPTIONS) as channel:
         await listen_to_stream_and_write_to_bq(
             channel, batch_writer, gcs_writer, server_address
         )
 
     await asyncio.gather(batch_writer_task, gcs_writer_task)
+    logging.error("Listening task finished (unexpected)")
 
 
 if __name__ == "__main__":

@@ -111,6 +111,7 @@ def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
         time.sleep(0.2)
 
 
+# TODO: Simplify
 async def listen_to_block_stream_and_place_orders(batch_writer):
     # Setup clients to broadcast
     wallet = LocalWallet.from_mnemonic(DYDX_MNEMONIC, BECH32_PREFIX)
