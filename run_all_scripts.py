@@ -166,17 +166,17 @@ def main():
             if process.poll() is not None:
                 logging.info(f"{script_name} ({config}) has stopped, restarting...")
                 processes[config] = start_script(script_name, args)
-
-            processes[config] = check_and_restart_script(
-                process,
-                config,
-                script_name,
-                table_id,
-                timestamp_column,
-                filter_condition,
-                args,
-                info["time_threshold"],
-            )
+            else:
+                processes[config] = check_and_restart_script(
+                    process,
+                    config,
+                    script_name,
+                    table_id,
+                    timestamp_column,
+                    filter_condition,
+                    args,
+                    info["time_threshold"],
+                )
 
         time.sleep(CHECK_INTERVAL)
 
