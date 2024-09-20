@@ -43,6 +43,16 @@ def setup_clients(grpc_endpoint):
     return client, ledger_client
 
 
+def get_current_block_with_retries(client: CompositeClient):
+    for i in range(5):
+        try:
+            return client.get_current_block()
+        except Exception as error:
+            if i == 4:
+                raise error
+    raise Exception("Failed to get current block")
+
+
 def get_markets_data(client, market):
     markets_response = client.indexer_client.markets.get_perpetual_markets(market)
     return markets_response.data["markets"][market]

@@ -33,6 +33,7 @@ from client_helpers import (
     place_orders,
     precompute_order,
     setup_clients,
+    get_current_block_with_retries,
 )
 
 config = load_config()
@@ -53,113 +54,107 @@ SIZE = 1
 MARKET = "AXL-USD"
 NUM_ORDERS_PER_SIDE_EACH_BLOCK = 1
 STARTING_CLIENT_ID = randrange(0, 2**32 - 1)
-NUM_BLOCKS = 1000000
+NUM_BLOCKS = 1_000_000
 WAIT_BLOCKS = 5
 MAX_LEN_ORDERS = 50
 DYDX_MNEMONIC = config["maker_mnemonic"]
-GTB_DELTA = 4
+GTB_DELTA = 10
 
 
-# This presigns all the orders and puts it into a dictionary that is used to write later
-def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
-    client_id = STARTING_CLIENT_ID
-    current_block = client.get_current_block() + WAIT_BLOCKS
-    account = ledger_client.query_account(subaccount.wallet.address())
-    while True:
-        with lock:
-            if current_block not in orders and len(orders) < MAX_LEN_ORDERS:
-                orders[current_block] = []
-                # place one order on each side
-                for i in range(NUM_ORDERS_PER_SIDE_EACH_BLOCK):
-                    orders[current_block].append(
-                        precompute_order(
-                            client,
-                            ledger_client,
-                            market,
-                            subaccount,
-                            OrderSide.BUY,
-                            BUY_PRICE,
-                            client_id + i * 2,
-                            current_block + GTB_DELTA,
-                            0,
-                            SIZE,
-                            ORDER_FLAGS_SHORT_TERM,
-                            TIME_IN_FORCE,
-                            account.sequence,
-                            account.number,
-                        )
-                    )
-                    orders[current_block].append(
-                        precompute_order(
-                            client,
-                            ledger_client,
-                            market,
-                            subaccount,
-                            OrderSide.SELL,
-                            SELL_PRICE,
-                            client_id + i * 2 + 1,
-                            current_block + GTB_DELTA,
-                            0,
-                            SIZE,
-                            ORDER_FLAGS_SHORT_TERM,
-                            TIME_IN_FORCE,
-                            account.sequence,
-                            account.number,
-                        )
-                    )
-                    client_id += NUM_ORDERS_PER_SIDE_EACH_BLOCK * 2
-                current_block += 1
+def orders_at_height(
+        client,
+        ledger_client,
+        market,
+        subaccount,
+        account,
+        current_block
+):
+    client_id = STARTING_CLIENT_ID + NUM_ORDERS_PER_SIDE_EACH_BLOCK * 2 * current_block
+    client_id = client_id % (2**32 - 1)
+    orders = []
 
-        time.sleep(0.2)
+    for i in range(NUM_ORDERS_PER_SIDE_EACH_BLOCK):
+        orders.append(
+            precompute_order(
+                client,
+                ledger_client,
+                market,
+                subaccount,
+                OrderSide.BUY,
+                BUY_PRICE,
+                client_id + i * 2,
+                current_block + GTB_DELTA,
+                0,
+                SIZE,
+                ORDER_FLAGS_SHORT_TERM,
+                TIME_IN_FORCE,
+                account.sequence,
+                account.number,
+            )
+        )
+        orders.append(
+            precompute_order(
+                client,
+                ledger_client,
+                market,
+                subaccount,
+                OrderSide.SELL,
+                SELL_PRICE,
+                client_id + i * 2 + 1,
+                current_block + GTB_DELTA,
+                0,
+                SIZE,
+                ORDER_FLAGS_SHORT_TERM,
+                TIME_IN_FORCE,
+                account.sequence,
+                account.number,
+            )
+        )
+
+    return orders
 
 
-# TODO: Simplify + catch client errors
 async def listen_to_block_stream_and_place_orders(batch_writer):
     # Setup clients to broadcast
     wallet = LocalWallet.from_mnemonic(DYDX_MNEMONIC, BECH32_PREFIX)
     client, ledger_client = setup_clients(config["full_node_submission_address"])
     subaccount = Subaccount(wallet, 0)
-    market = get_markets_data(client, MARKET)
-
-    orders = {}
-    lock = threading.Lock()
-
-    threading.Thread(
-        target=pre_signing_thread,
-        args=(client, ledger_client, market, subaccount, orders, lock),
-        daemon=True,
-    ).start()
+    market = await asyncio.to_thread(get_markets_data, client, MARKET)
+    account = await asyncio.to_thread(
+        ledger_client.query_account,
+        subaccount.wallet.address()
+    )
 
     previous_block = 0
     num_blocks_placed = 0
-    time.sleep(5)
     while num_blocks_placed < NUM_BLOCKS:
-        current_block = client.get_current_block()  # TODO: this can fail
+        current_block = await asyncio.to_thread(
+            get_current_block_with_retries,
+            client,
+        )
         if previous_block < current_block:
             logging.info(f"New block: {current_block}")
+            orders = orders_at_height(
+                client,
+                ledger_client,
+                market,
+                subaccount,
+                account,
+                current_block
+            )
 
-            task = None
-            with lock:
-                if current_block in orders:
-                    logging.info(f"Placing orders for block: {current_block}")
-                    task = asyncio.create_task(
-                        place_orders(
-                            ledger_client,
-                            current_block,
-                            orders[current_block],
-                            batch_writer,
-                        )
-                    )
-                    orders.pop(current_block)
-            if task:
-                await task
+            await place_orders(
+                ledger_client,
+                current_block,
+                orders,
+                batch_writer,
+            )
 
             previous_block = current_block
             num_blocks_placed += 1
 
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.25)
 
-    logging.info("Finished placing orders, awaiting task completion...")
     logging.info("Done - shutting down")
 
 
@@ -168,8 +163,10 @@ async def main():
         DATASET_ID, TABLE_ID, WORKER_COUNT, BATCH_SIZE, BATCH_TIMEOUT
     )
     batch_writer_task = asyncio.create_task(batch_writer.batch_writer_loop())
-    await listen_to_block_stream_and_place_orders(batch_writer)
-    await batch_writer_task
+    listen_task = asyncio.create_task(
+        listen_to_block_stream_and_place_orders(batch_writer)
+    )
+    await asyncio.gather(batch_writer_task, listen_task)
 
 
 if __name__ == "__main__":
