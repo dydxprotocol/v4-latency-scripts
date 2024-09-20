@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import List, Callable
+from typing import List, Callable, Type, Awaitable
 
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud import bigquery, storage
@@ -58,23 +58,39 @@ class BatchWriter:
         self.batch_timeout = batch_timeout
         self.last_flush_time = datetime.utcnow()
 
+        async def default_error_413_handler(data_buffer, e):
+            logging.error(f"Error inserting {len(data_buffer)} rows (code = {e.code}): {e}")
+
+        self.error_413_handler = default_error_413_handler
+
     async def enqueue_data(self, data):
         await self.queue.put(data)
 
     async def flush_data(self, data_buffer):
         try:
             errors = await asyncio.to_thread(
-                self.bq_client.insert_rows_json, self.table_ref, data_buffer
+                self.bq_client.insert_rows_json,
+                self.table_ref,
+                data_buffer
             )
             if errors:
                 logging.error(f"Errors occurred: {errors}")
-        # TODO: Catch batch too large thing and fall back to GCS writer
         except GoogleAPICallError as e:
-            logging.error(f"Error inserting {len(data_buffer)} rows (code = {e.code}): {e}")
+            if e.code == 413:
+                await self.error_413_handler(data_buffer, e)
+            else:
+                logging.error(f"Error inserting {len(data_buffer)} rows (code = {e.code}): {e}")
         except Exception as e:
             logging.error(f"Error inserting {len(data_buffer)} rows: {e}")
         finally:
             self.last_flush_time = datetime.utcnow()
+
+    def set_error_413_handler(self, handler: Callable[[List, Type[Exception]], Awaitable[None]]):
+        """
+        Set an async function handler that will be called when a 413 (payload
+        too large) error occurs.
+        """
+        self.error_413_handler = handler
 
     async def batch_writer_loop(self):
         workers = [asyncio.create_task(self.worker()) for _ in range(self.worker_count)]
@@ -144,9 +160,9 @@ class GCSWriter:
                 logging.error(f"Error inserting data: {e}")
 
     def _process_and_insert(self, data: dict) -> None:
-        data = self.middleware_fn(data)
+        data = [self.middleware_fn(data) for data in data]
         return gcs_insert.insert_via_gcs(
-            self.client, self.bucket, self.table, [data]
+            self.client, self.bucket, self.table, data
         )
 
     def set_middleware(self, middleware_fn: Callable[[dict], dict]):

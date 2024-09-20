@@ -91,12 +91,14 @@ def process_error(error_msg, server_address):
     return data
 
 
-# TODO: Log message counts every 10 mins
 async def listen_to_stream_and_write_to_bq(
         channel, batch_writer, gcs_writer, server_address
 ):
     retry_count = 0
     start_time = datetime.utcnow()
+
+    msg_count = 0
+    msg_count_time = datetime.utcnow()
 
     while retry_count < MAX_RETRIES_PER_DAY:
         try:
@@ -108,12 +110,18 @@ async def listen_to_stream_and_write_to_bq(
                 row = process_message(response, server_address)
 
                 # If the row is too large, sideload into BQ via GCS
-                # TODO: Make this automatic based on error when doing normal insert
-                too_large_for_direct_insert = len(row['response']) > 5_000_000
+                too_large_for_direct_insert = len(row['response']) > 1_000_000
                 if too_large_for_direct_insert:
-                    await gcs_writer.enqueue_data(row)
+                    await gcs_writer.enqueue_data([row])
                 else:
                     await batch_writer.enqueue_data(row)
+
+                # Log message counts every 15 mins
+                msg_count += 1
+                if datetime.utcnow() - msg_count_time > timedelta(minutes=15):
+                    logging.info(f"Saw {msg_count} msgs in the last 15 minutes")
+                    msg_count_time = datetime.utcnow()
+                    msg_count = 0
 
             await batch_writer.enqueue_data(
                 process_error("Stream ended", server_address)
@@ -168,16 +176,22 @@ def preprocess_row_for_gcs(row: dict) -> dict:
 
 
 async def main(server_address):
+    # Writer for exceptionally large rows (book snapshots)
+    gcs_writer = GCSWriter(DATASET_ID, TABLE_ID, SCHEMA, GCS_BUCKET)
+    gcs_writer.set_middleware(preprocess_row_for_gcs)
+    gcs_writer_task = asyncio.create_task(gcs_writer.gcs_writer_loop())
+
     # Writer for direct BigQuery inserts
     batch_writer = BatchWriter(
         DATASET_ID, TABLE_ID, WORKER_COUNT, BATCH_SIZE, BATCH_TIMEOUT
     )
     batch_writer_task = asyncio.create_task(batch_writer.batch_writer_loop())
 
-    # Writer for exceptionally large rows (book snapshots)
-    gcs_writer = GCSWriter(DATASET_ID, TABLE_ID, SCHEMA, GCS_BUCKET)
-    gcs_writer.set_middleware(preprocess_row_for_gcs)
-    gcs_writer_task = asyncio.create_task(gcs_writer.gcs_writer_loop())
+    # If the direct writer encounters a 413 error, fall back to sideloading
+    async def error_413_handler(data_buffer, e):
+        logging.error(f"Error 413 occurred, sideloading {len(data_buffer)} rows.")
+        await gcs_writer.enqueue_data(data_buffer)
+    batch_writer.set_error_413_handler(error_413_handler)
 
     # Adjust to use secure channel if needed
     logging.info(f"Connecting to server at {server_address}...")
