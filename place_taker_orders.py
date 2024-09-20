@@ -87,6 +87,7 @@ def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
                             ORDER_FLAGS_SHORT_TERM,
                             TIME_IN_FORCE,
                             account.sequence,
+                            account.number,
                         )
                     )
                     orders[current_block].append(
@@ -104,6 +105,7 @@ def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
                             ORDER_FLAGS_SHORT_TERM,
                             TIME_IN_FORCE,
                             account.sequence,
+                            account.number,
                         )
                     )
                 client_id += NUM_ORDERS_PER_SIDE_EACH_BLOCK * 2

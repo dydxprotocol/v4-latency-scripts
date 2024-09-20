@@ -77,9 +77,7 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
     while num_blocks_placed < NUM_BLOCKS:
         # only place one order each time, due to Stateful order rate limit
         logging.info(f"Presigning orders {num_blocks_placed}")
-        # TODO: Simplify
-        order = await asyncio.to_thread(
-            precompute_order,
+        order = precompute_order(
             client,
             ledger_client,
             market,
@@ -93,6 +91,7 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
             ORDER_FLAGS_LONG_TERM,
             TIME_IN_FORCE,
             sequence,
+            account.number
         )
         orders = [order]
         logging.info(f"Placing orders {num_blocks_placed}")

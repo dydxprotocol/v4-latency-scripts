@@ -86,6 +86,7 @@ def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
                             ORDER_FLAGS_SHORT_TERM,
                             TIME_IN_FORCE,
                             account.sequence,
+                            account.number,
                         )
                     )
                     orders[current_block].append(
@@ -103,6 +104,7 @@ def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
                             ORDER_FLAGS_SHORT_TERM,
                             TIME_IN_FORCE,
                             account.sequence,
+                            account.number,
                         )
                     )
                     client_id += NUM_ORDERS_PER_SIDE_EACH_BLOCK * 2
@@ -111,7 +113,7 @@ def pre_signing_thread(client, ledger_client, market, subaccount, orders, lock):
         time.sleep(0.2)
 
 
-# TODO: Simplify
+# TODO: Simplify + catch client errors
 async def listen_to_block_stream_and_place_orders(batch_writer):
     # Setup clients to broadcast
     wallet = LocalWallet.from_mnemonic(DYDX_MNEMONIC, BECH32_PREFIX)
@@ -132,7 +134,7 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
     num_blocks_placed = 0
     time.sleep(5)
     while num_blocks_placed < NUM_BLOCKS:
-        current_block = client.get_current_block()
+        current_block = client.get_current_block()  # TODO: this can fail
         if previous_block < current_block:
             logging.info(f"New block: {current_block}")
 
