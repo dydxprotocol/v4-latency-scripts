@@ -56,7 +56,7 @@ MARKET = "AXL-USD"
 NUM_BLOCKS = 10_000
 DYDX_MNEMONIC = config["stateful_mnemonic"]
 GTBT_DELTA = 5
-PLACE_INTERVAL = 10
+PLACE_INTERVAL = 12
 
 
 async def listen_to_block_stream_and_place_orders(batch_writer):
@@ -97,12 +97,23 @@ async def listen_to_block_stream_and_place_orders(batch_writer):
         logging.info(f"Placing orders {num_blocks_placed}")
         current_block = await asyncio.to_thread(client.get_current_block)
 
-        await place_orders(
+        # Check errors, because if block rate limit is exceeded, we need to
+        # wait and also the sequence number might be off
+        errs = await place_orders(
             ledger_client,
             current_block,
             orders,
             batch_writer,
         )
+
+        if len([x for x in errs if x is not None]) > 0:
+            logging.info("Saw errors placing orders, refreshing seq and sleeping longer...")
+            account = await asyncio.to_thread(
+                ledger_client.query_account,
+                subaccount.wallet.address()
+            )
+            await asyncio.sleep(PLACE_INTERVAL * 2)
+            sequence = account.sequence - 1
 
         client_id += 1
         num_blocks_placed += 1
