@@ -22,7 +22,7 @@ from bq_helpers import create_table, BatchWriter, GCSWriter
 # Dataset configuration
 DATASET_ID = "full_node_stream"
 TABLE_ID = "responses"
-CLOB_PAIR_IDS = range(144)  # TODO: Make this automatic
+CLOB_PAIR_IDS = range(1000)  # Have to update if too many more pairs are added
 
 # If data to too large for direct insert, use this GCS bucket to sideload
 GCS_BUCKET = "full_node_stream_sideload"
