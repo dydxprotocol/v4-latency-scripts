@@ -43,6 +43,16 @@ def setup_clients(grpc_endpoint):
     return client, ledger_client
 
 
+def get_current_block_with_retries(client: CompositeClient):
+    for i in range(5):
+        try:
+            return client.get_current_block()
+        except Exception as error:
+            if i == 4:
+                raise error
+    raise Exception("Failed to get current block")
+
+
 def get_markets_data(client, market):
     markets_response = client.indexer_client.markets.get_perpetual_markets(market)
     return markets_response.data["markets"][market]
@@ -62,19 +72,20 @@ def place_order(client, block, msg_and_order, batch_writer):
 
 
 def precompute_order(
-    client,
-    ledger_client,
-    market,
-    subaccount,
-    side,
-    price,
-    client_id,
-    good_til_block,
-    good_til_block_time,
-    size,
-    order_flags,
-    time_in_force,
-    sequence_number,
+        client,
+        ledger_client,
+        market,
+        subaccount,
+        side,
+        price,
+        client_id,
+        good_til_block,
+        good_til_block_time,
+        size,
+        order_flags,
+        time_in_force,
+        sequence_number,
+        account_number,
 ):
     # precompute order and sign the order
     clob_pair_id = market["clobPairId"]
@@ -114,7 +125,6 @@ def precompute_order(
     memo = None
 
     fee = ledger_client.estimate_fee_from_gas(gas_limit)
-    account = ledger_client.query_account(sender.address())
 
     tx.seal(
         SigningCfg.direct(sender.public_key(), sequence_number),
@@ -122,9 +132,13 @@ def precompute_order(
         gas_limit=gas_limit,
         memo=memo,
     )
-    tx.sign(sender.signer(), ledger_client.network_config.chain_id, account.number)
+    tx.sign(
+        sender.signer(),
+        ledger_client.network_config.chain_id,
+        account_number
+    )
     tx.complete()
-    return (tx, msg)
+    return tx, msg
 
 
 async def place_orders(client, block, msg_and_orders, batch_writer):

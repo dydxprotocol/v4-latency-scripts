@@ -12,6 +12,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
+from typing import Dict
 
 from google.cloud import bigquery
 
@@ -94,6 +95,24 @@ def start_script(script_name, args):
     return subprocess.Popen(["python", script_name] + args)
 
 
+def force_kill_process(process: subprocess.Popen, pname: str):
+    # Try to terminate the process
+    logging.info(f"Terminating process {pname}...")
+    process.terminate()
+
+    # Wait for a few seconds to give the process time to terminate
+    time.sleep(3)
+
+    # Check if the process has terminated
+    if process.poll() is None:
+        # Process is still alive, so forcefully kill it
+        logging.info(f"Forcefully killing process {pname}...")
+        process.kill()
+
+    process.wait()
+    logging.info(f"Process {pname} has finished.")
+
+
 def check_and_restart_script(
     process,
     config_name,
@@ -128,15 +147,14 @@ def check_and_restart_script(
         should_restart = True
 
     if should_restart:
-        process.kill()
-        process.wait()
+        force_kill_process(process, script_name)
         return start_script(script_name, args)
     else:
         return process
 
 
 def main():
-    processes = {
+    processes: Dict[str, subprocess.Popen] = {
         config: start_script(info["script_name"], info["args"])
         for config, info in SCRIPT_CONFIGS.items()
     }
@@ -144,9 +162,8 @@ def main():
     # Gracefully handle Ctrl+C
     def signal_handler(sig, frame):
         logging.info("Received termination signal, shutting down...")
-        for process in processes.values():
-            process.terminate()
-            process.wait()
+        for pname, p in processes.items():
+            force_kill_process(p, pname)
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -166,17 +183,17 @@ def main():
             if process.poll() is not None:
                 logging.info(f"{script_name} ({config}) has stopped, restarting...")
                 processes[config] = start_script(script_name, args)
-
-            processes[config] = check_and_restart_script(
-                process,
-                config,
-                script_name,
-                table_id,
-                timestamp_column,
-                filter_condition,
-                args,
-                info["time_threshold"],
-            )
+            else:
+                processes[config] = check_and_restart_script(
+                    process,
+                    config,
+                    script_name,
+                    table_id,
+                    timestamp_column,
+                    filter_condition,
+                    args,
+                    info["time_threshold"],
+                )
 
         time.sleep(CHECK_INTERVAL)
 
