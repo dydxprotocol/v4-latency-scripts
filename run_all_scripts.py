@@ -28,14 +28,14 @@ PROJECT_ID = config["bigquery_project_id"]
 CHECK_INTERVAL = 250  # Check every 250 seconds
 
 SCRIPT_CONFIGS = {
-    "websocket": {
-        "script_name": "listen_to_websocket.py",
-        "table_id": "indexer_stream.responses",
-        "timestamp_column": "received_at",
-        "filter": "",
-        "args": [],
-        "time_threshold": timedelta(seconds=90),
-    },
+    # "websocket": {
+    #     "script_name": "listen_to_websocket.py",
+    #     "table_id": "indexer_stream.responses",
+    #     "timestamp_column": "received_at",
+    #     "filter": "",
+    #     "args": [],
+    #     "time_threshold": timedelta(seconds=90),
+    # },
     "place_orders": {
         "script_name": "place_orders.py",
         "table_id": "latency_experiments.long_running_two_sided_orders",
@@ -71,6 +71,16 @@ for addr in config["full_node_addresses"]:
         "timestamp_column": "received_at",
         "filter": f'server_address = "{addr}"',
         "args": ["--server_address", addr],
+        "time_threshold": timedelta(seconds=90),
+    }
+
+for addr in config["indexer_addresses"]:
+    SCRIPT_CONFIGS[f"indexer {addr}"] = {
+        "script_name": "listen_to_websocket.py",
+        "table_id": "indexer_stream_new.responses",
+        "timestamp_column": "received_at",
+        "filter": f'server_address = "{addr}"',
+        "args": ["--indexer_url", addr],
         "time_threshold": timedelta(seconds=90),
     }
 

@@ -32,9 +32,9 @@ QUERIES = [
                 UNION ALL
                 SELECT p.received_at
                     , TIMESTAMP_DIFF(p.received_at, s.sent_at, millisecond) AS latency
-                    , "indexer" AS server_address
+                    , p.server_address
                 FROM `{project_id}.latency_experiments.long_running_two_sided_orders` s
-                JOIN `{project_id}.indexer_stream.received_orders_and_cancels` p
+                JOIN `{project_id}.indexer_stream_new.received_orders_and_cancels` p
                     ON p.client_id = CAST(s.client_id AS STRING)
                    AND p.address = s.address
                    AND p.received_at > TIMESTAMP("{start_timestamp}")
@@ -68,9 +68,9 @@ QUERIES = [
             UNION ALL
             SELECT p.received_at
                 , TIMESTAMP_DIFF(p.received_at, s.sent_at, millisecond) AS latency
-                , "indexer" AS server_address
+                , p.server_address
             FROM `{project_id}.latency_experiments.long_running_stateful_orders` s
-            JOIN `{project_id}.indexer_stream.received_orders_and_cancels` p
+            JOIN `{project_id}.indexer_stream_new.received_orders_and_cancels` p
                 ON p.client_id = CAST(s.client_id AS STRING)
             AND p.address = s.address
             AND p.received_at > TIMESTAMP("{start_timestamp}")
