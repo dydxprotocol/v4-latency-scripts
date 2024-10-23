@@ -107,6 +107,7 @@ async def main(indexer_url: str):
     subaccount_ids = [
         "/".join([config_json["maker_address"], str(0)]),
         "/".join([config_json["taker_address"], str(0)]),
+        "/".join([config_json["stateful_address"], str(0)]),
     ]
     client = AsyncSocketClient(
         indexer_url,
