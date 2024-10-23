@@ -105,14 +105,13 @@ def start_script(script_name, args):
     return subprocess.Popen(["python", script_name] + args)
 
 
-def force_kill_process(process: subprocess.Popen, pname: str):
+def terminate_process(process: subprocess.Popen, pname: str):
     # Try to terminate the process
     logging.info(f"Terminating process {pname}...")
     process.terminate()
 
-    # Wait for a few seconds to give the process time to terminate
-    time.sleep(3)
 
+def force_kill_process(process: subprocess.Popen, pname: str):
     # Check if the process has terminated
     if process.poll() is None:
         # Process is still alive, so forcefully kill it
@@ -157,6 +156,8 @@ def check_and_restart_script(
         should_restart = True
 
     if should_restart:
+        terminate_process(process, script_name)
+        time.sleep(1)  # Wait for the process to terminate
         force_kill_process(process, script_name)
         return start_script(script_name, args)
     else:
@@ -173,7 +174,13 @@ def main():
     def signal_handler(sig, frame):
         logging.info("Received termination signal, shutting down...")
         for pname, p in processes.items():
+            terminate_process(p, pname)
+
+        time.sleep(3)  # Wait for the processes to terminate
+
+        for pname, p in processes.items():
             force_kill_process(p, pname)
+
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
