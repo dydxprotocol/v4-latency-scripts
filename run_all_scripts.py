@@ -28,14 +28,14 @@ PROJECT_ID = config["bigquery_project_id"]
 CHECK_INTERVAL = 250  # Check every 250 seconds
 
 SCRIPT_CONFIGS = {
-    "websocket": {
-        "script_name": "listen_to_websocket.py",
-        "table_id": "indexer_stream.responses",
-        "timestamp_column": "received_at",
-        "filter": "",
-        "args": [],
-        "time_threshold": timedelta(seconds=90),
-    },
+    # "websocket": {
+    #     "script_name": "listen_to_websocket.py",
+    #     "table_id": "indexer_stream.responses",
+    #     "timestamp_column": "received_at",
+    #     "filter": "",
+    #     "args": [],
+    #     "time_threshold": timedelta(seconds=90),
+    # },
     "place_orders": {
         "script_name": "place_orders.py",
         "table_id": "latency_experiments.long_running_two_sided_orders",
@@ -74,6 +74,16 @@ for addr in config["full_node_addresses"]:
         "time_threshold": timedelta(seconds=90),
     }
 
+for addr in config["indexer_addresses"]:
+    SCRIPT_CONFIGS[f"indexer {addr}"] = {
+        "script_name": "listen_to_websocket.py",
+        "table_id": "indexer_stream_new.responses",
+        "timestamp_column": "received_at",
+        "filter": f'server_address = "{addr}"',
+        "args": ["--indexer_url", addr],
+        "time_threshold": timedelta(seconds=90),
+    }
+
 
 def get_latest_timestamp(table_id, timestamp_column, filter_condition):
     filter_clause = f"WHERE TIMESTAMP_TRUNC({timestamp_column}, DAY) = TIMESTAMP(CURRENT_DATE()) AND {filter_condition}" if filter_condition else ""
@@ -95,14 +105,13 @@ def start_script(script_name, args):
     return subprocess.Popen(["python", script_name] + args)
 
 
-def force_kill_process(process: subprocess.Popen, pname: str):
+def terminate_process(process: subprocess.Popen, pname: str):
     # Try to terminate the process
     logging.info(f"Terminating process {pname}...")
     process.terminate()
 
-    # Wait for a few seconds to give the process time to terminate
-    time.sleep(3)
 
+def force_kill_process(process: subprocess.Popen, pname: str):
     # Check if the process has terminated
     if process.poll() is None:
         # Process is still alive, so forcefully kill it
@@ -147,6 +156,8 @@ def check_and_restart_script(
         should_restart = True
 
     if should_restart:
+        terminate_process(process, script_name)
+        time.sleep(1)  # Wait for the process to terminate
         force_kill_process(process, script_name)
         return start_script(script_name, args)
     else:
@@ -163,7 +174,13 @@ def main():
     def signal_handler(sig, frame):
         logging.info("Received termination signal, shutting down...")
         for pname, p in processes.items():
+            terminate_process(p, pname)
+
+        time.sleep(3)  # Wait for the processes to terminate
+
+        for pname, p in processes.items():
             force_kill_process(p, pname)
+
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)

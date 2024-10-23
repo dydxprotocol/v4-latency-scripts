@@ -103,7 +103,7 @@ class BatchWriter:
                 elapsed_time = (
                         datetime.utcnow() - self.last_flush_time
                 ).total_seconds()
-                dynamic_timeout = max(0, self.batch_timeout - elapsed_time)
+                dynamic_timeout = max(0.1, self.batch_timeout - elapsed_time)
                 data = await asyncio.wait_for(self.queue.get(), timeout=dynamic_timeout)
                 data_buffer.append(data)
 
