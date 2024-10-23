@@ -56,7 +56,7 @@ MARKET = "AXL-USD"
 NUM_BLOCKS = 10_000
 DYDX_MNEMONIC = config["stateful_mnemonic"]
 GTBT_DELTA = 5
-PLACE_INTERVAL = 12
+PLACE_INTERVAL = 13
 
 
 async def listen_to_block_stream_and_place_orders(batch_writer):
