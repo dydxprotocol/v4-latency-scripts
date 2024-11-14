@@ -5,11 +5,11 @@ import logging
 from datetime import datetime
 from random import randrange
 
-from v4_client_py.chain.aerial.client import LedgerClient, NetworkConfig
-from v4_client_py.chain.aerial.tx import SigningCfg, Transaction
-from v4_client_py.clients import CompositeClient
-from v4_client_py.clients.constants import Network
-from v4_client_py.clients.helpers.chain_helpers import (
+from vendor.v4_client_py.chain.aerial.client import LedgerClient, NetworkConfig
+from vendor.v4_client_py.chain.aerial.tx import SigningCfg, Transaction
+from vendor.v4_client_py.clients import CompositeClient
+from vendor.v4_client_py.clients.constants import Network
+from vendor.v4_client_py.clients.helpers.chain_helpers import (
     calculate_side,
     calculate_quantums,
     calculate_subticks,

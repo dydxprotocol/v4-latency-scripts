@@ -5,11 +5,11 @@ import time
 from logging.handlers import RotatingFileHandler
 from random import randrange
 
-from v4_client_py.chain.aerial.wallet import LocalWallet
-from v4_client_py.clients import Subaccount
-from v4_client_py.clients.constants import BECH32_PREFIX
-from v4_client_py.clients.helpers.chain_helpers import OrderSide
-from v4_client_py.clients.helpers.chain_helpers import (
+from vendor.v4_client_py.chain.aerial.wallet import LocalWallet
+from vendor.v4_client_py.clients import Subaccount
+from vendor.v4_client_py.clients.constants import BECH32_PREFIX
+from vendor.v4_client_py.clients.helpers.chain_helpers import OrderSide
+from vendor.v4_client_py.clients.helpers.chain_helpers import (
     Order_TimeInForce,
     ORDER_FLAGS_SHORT_TERM,
 )
