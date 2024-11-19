@@ -1,24 +1,27 @@
-"""Script that places orders every block with a new client id each time 
-   and writes the time that it was placed along with the order info to BigQuery
+"""
+
+Script that places orders every block with a new client id each time
+and writes the time that it was placed along with the order info to BigQuery
 
 Usage: python place_orders.py
 """
 
 import asyncio
+import json
 import logging
-import threading
-import time
+import sys
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from random import randrange
 
-from v4_client_py.chain.aerial.wallet import LocalWallet
-from v4_client_py.clients import Subaccount
-from v4_client_py.clients.constants import BECH32_PREFIX
-from v4_client_py.clients.helpers.chain_helpers import OrderSide
-from v4_client_py.clients.helpers.chain_helpers import (
-    Order_TimeInForce,
-    ORDER_FLAGS_SHORT_TERM,
-)
+from dydx_v4_client import OrderFlags
+from dydx_v4_client.indexer.rest.constants import OrderType
+from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
+from dydx_v4_client.network import NodeConfig, insecure_channel
+from dydx_v4_client.node.client import NodeClient
+from dydx_v4_client.node.market import Market
+from dydx_v4_client.wallet import Wallet, from_mnemonic
+from v4_proto.dydxprotocol.clob.order_pb2 import Order
 
 from bq_helpers import (
     create_table,
@@ -27,14 +30,11 @@ from bq_helpers import (
     PLACE_ORDER_SCHEMA,
     PLACE_ORDER_TIME_PARTITIONING,
 )
-from client_helpers import (
-    get_markets_data,
-    load_config,
-    place_orders,
-    precompute_order,
-    setup_clients,
-    get_current_block_with_retries,
-)
+
+def load_config():
+    # load config from config.json
+    with open("config.json", "r") as config_file:
+        return json.load(config_file)
 
 config = load_config()
 # Dataset configuration
@@ -47,7 +47,7 @@ BATCH_TIMEOUT = 10
 WORKER_COUNT = 1
 
 # Constants on how to place orders
-TIME_IN_FORCE = Order_TimeInForce.TIME_IN_FORCE_POST_ONLY
+TIME_IN_FORCE = Order.TIME_IN_FORCE_POST_ONLY
 BUY_PRICE = 0.01
 SELL_PRICE = 10
 SIZE = 1
@@ -62,52 +62,42 @@ GTB_DELTA = 10
 
 
 def orders_at_height(
-        client,
-        ledger_client,
-        market,
-        subaccount,
-        account,
-        current_block
+        market: Market,
+        address: str,
+        current_block: int,
 ):
     client_id = STARTING_CLIENT_ID + NUM_ORDERS_PER_SIDE_EACH_BLOCK * 2 * current_block
     client_id = client_id % (2**32 - 1)
     orders = []
 
+
     for i in range(NUM_ORDERS_PER_SIDE_EACH_BLOCK):
+        id_a = market.order_id(address, 0, client_id + i * 2, OrderFlags.SHORT_TERM)
+        id_b = market.order_id(address, 0, client_id + i * 2 + 1, OrderFlags.SHORT_TERM)
+
         orders.append(
-            precompute_order(
-                client,
-                ledger_client,
-                market,
-                subaccount,
-                OrderSide.BUY,
-                BUY_PRICE,
-                client_id + i * 2,
-                current_block + GTB_DELTA,
-                0,
-                SIZE,
-                ORDER_FLAGS_SHORT_TERM,
-                TIME_IN_FORCE,
-                account.sequence,
-                account.number,
+            market.order(
+                id_a,
+                OrderType.LIMIT,
+                Order.Side.SIDE_BUY,
+                size=SIZE,
+                price=BUY_PRICE,
+                time_in_force=TIME_IN_FORCE,
+                reduce_only=False,
+                good_til_block=current_block + GTB_DELTA,
             )
         )
+
         orders.append(
-            precompute_order(
-                client,
-                ledger_client,
-                market,
-                subaccount,
-                OrderSide.SELL,
-                SELL_PRICE,
-                client_id + i * 2 + 1,
-                current_block + GTB_DELTA,
-                0,
-                SIZE,
-                ORDER_FLAGS_SHORT_TERM,
-                TIME_IN_FORCE,
-                account.sequence,
-                account.number,
+            market.order(
+                id_b,
+                OrderType.LIMIT,
+                Order.Side.SIDE_SELL,
+                size=SIZE,
+                price=SELL_PRICE,
+                time_in_force=TIME_IN_FORCE,
+                reduce_only=False,
+                good_til_block=current_block + GTB_DELTA,
             )
         )
 
@@ -116,39 +106,52 @@ def orders_at_height(
 
 async def listen_to_block_stream_and_place_orders(batch_writer):
     # Setup clients to broadcast
-    wallet = LocalWallet.from_mnemonic(DYDX_MNEMONIC, BECH32_PREFIX)
-    client, ledger_client = setup_clients(config["full_node_submission_address"])
-    subaccount = Subaccount(wallet, 0)
-    market = await asyncio.to_thread(get_markets_data, client, MARKET)
-    account = await asyncio.to_thread(
-        ledger_client.query_account,
-        subaccount.wallet.address()
+    node_url = config['full_node_submission_address']
+    valiator_address_field = f'grpc+http://{node_url}'
+    node = await NodeClient.connect(
+        NodeConfig(
+            "dydx-mainnet-1",
+            chaintoken_denom="adydx",
+            usdc_denom="ibc/8E27BA2D5493AF5636760E354E46004562C46AB7EC0CC4C1CA14E9E20E2545B5",
+            channel=insecure_channel(node_url),
+        )
     )
+
+    indexer = IndexerClient("https://indexer.dydx.trade")
+    market_data = (await indexer.markets.get_perpetual_markets())['markets'][MARKET]
+    market = Market(market_data)
+
+    address = Wallet(from_mnemonic(DYDX_MNEMONIC), 0, 0).address
+    wallet = await Wallet.from_mnemonic(node, DYDX_MNEMONIC, address)
 
     previous_block = 0
     num_blocks_placed = 0
     while num_blocks_placed < NUM_BLOCKS:
-        current_block = await asyncio.to_thread(
-            get_current_block_with_retries,
-            client,
-        )
+        current_block = await node.latest_block_height()
+
         if previous_block < current_block:
             logging.info(f"New block: {current_block}")
-            orders = orders_at_height(
-                client,
-                ledger_client,
-                market,
-                subaccount,
-                account,
-                current_block
-            )
+            orders = orders_at_height(market, address, current_block)
 
-            await place_orders(
-                ledger_client,
-                current_block,
-                orders,
-                batch_writer,
-            )
+            logging.info(f"Placing orders:")
+            tasks = []
+            for order in orders:
+                logging.info(f"  {order}")
+                order_data = {
+                    "sent_at": datetime.utcnow().isoformat("T") + "Z",
+                    "uuid": str(randrange(2 ** 32 - 1)),
+                    "validator_address": valiator_address_field,
+                    "block": current_block,
+                    "address": order.order_id.subaccount_id.owner,
+                    "side": order.side,
+                    "good_til_block": order.good_til_block,
+                    "client_id": order.order_id.client_id,
+                }
+                await batch_writer.enqueue_data(order_data)
+                tasks.append(node.place_order(wallet, order))
+
+            resp = await asyncio.gather(*tasks)
+            logging.info(f"Placed orders: {resp}")
 
             previous_block = current_block
             num_blocks_placed += 1
@@ -175,8 +178,11 @@ if __name__ == "__main__":
         maxBytes=5 * 1024 * 1024,  # 5 MB
         backupCount=5
     )
+
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setLevel(logging.INFO)
     logging.basicConfig(
-        handlers=[handler],
+        handlers=[handler, stdout_handler],
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
