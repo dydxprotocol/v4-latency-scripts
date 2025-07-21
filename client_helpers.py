@@ -27,6 +27,7 @@ def setup_clients(grpc_endpoint):
     # setup network and ledger client
     network_config = Network.config_network()
     # hardcode constants
+    network_config.indexer_config.rest_endpoint = 'https://indexer.dydx.trade'
     network_config.validator_config.grpc_endpoint = grpc_endpoint
     network_config.validator_config.url = "https://" + grpc_endpoint
     network_config.validator_config.ssl_enabled = False

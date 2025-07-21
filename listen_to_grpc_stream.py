@@ -39,7 +39,7 @@ TIME_PARTITIONING = bigquery.TimePartitioning(field="received_at")
 CLUSTERING_FIELDS = ["server_address"]
 
 # Batch settings
-BATCH_SIZE = 5000
+BATCH_SIZE = 25
 BATCH_TIMEOUT = 10
 
 MAX_RETRIES_PER_DAY = 100
@@ -110,7 +110,7 @@ async def listen_to_stream_and_write_to_bq(
                 row = process_message(response, server_address)
 
                 # If the row is too large, sideload into BQ via GCS
-                too_large_for_direct_insert = len(row['response']) > 1_000_000
+                too_large_for_direct_insert = len(row['response']) > 10_000_000
                 if too_large_for_direct_insert:
                     await gcs_writer.enqueue_data([row])
                 else:
