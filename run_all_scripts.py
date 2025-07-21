@@ -102,7 +102,7 @@ def get_latest_timestamp(table_id, timestamp_column, filter_condition):
 
 def start_script(script_name, args):
     logging.info("running " + script_name + " " + " ".join(args))
-    return subprocess.Popen(["python", script_name] + args)
+    return subprocess.Popen(["python3", script_name] + args)
 
 
 def terminate_process(process: subprocess.Popen, pname: str):
