@@ -6,12 +6,14 @@ from logging.handlers import RotatingFileHandler
 
 import google.cloud.bigquery as bigquery
 from datadog import initialize, api
+from datetime import datetime, timedelta
 
 with open("config.json", "r") as config_file:
     config = json.load(config_file)
 
-START_TIMESTAMP = "2024-06-18 22:05:00"
+START_TIMESTAMP = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
 PROJECT_ID = config["bigquery_project_id"]
+
 # Configuration
 QUERIES = [
     {
@@ -88,6 +90,10 @@ QUERIES = [
     },
 ]
 
+# TODO: Temporary measure while not placing stateful orders
+QUERIES = QUERIES[:1]
+
+
 DATADOG_API_KEY = config["dd_api_key"]
 DATADOG_APP_KEY = config["dd_app_key"]
 POLL_INTERVAL = 60  # 1 minute
@@ -113,6 +119,8 @@ def save_last_processed_timestamps(timestamps):
 def run_query(client, query, params, last_processed_timestamp):
     params["timestamp"] = last_processed_timestamp
     logging.info(f"Running BQ query `{query[:100]}...` with params: {params}")
+    logging.debug(query)
+    logging.debug(params)
     query_job = client.query(
         query,
         job_config=bigquery.QueryJobConfig(
