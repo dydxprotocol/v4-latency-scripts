@@ -23,31 +23,28 @@ QUERIES = [
                     , p.server_address
                 FROM `{project_id}.latency_experiments.long_running_two_sided_orders` s
                 JOIN `{project_id}.full_node_stream.order_places` p
-                   ON p.client_id = CAST(s.client_id AS STRING)
-                  AND p.address = s.address
-                  AND p.received_at > TIMESTAMP("{start_timestamp}")
-                  AND p.received_at > TIMESTAMP(@timestamp)
-                WHERE s.sent_at > TIMESTAMP("{start_timestamp}")
-                  AND s.address = @maker_address
-                  AND TIMESTAMP_TRUNC(s.sent_at, DAY) > TIMESTAMP(TIMESTAMP_ADD(CURRENT_DATE, INTERVAL -1 DAY))
+                ON p.client_id = CAST(s.client_id AS STRING)
+                AND p.address = s.address
+                WHERE s.sent_at > TIMESTAMP(DATE_ADD(CURRENT_DATE, INTERVAL -1 DAY))
+                AND s.address = @maker_address
+                AND p.received_at > TIMESTAMP(@timestamp)
+                AND p.received_at > TIMESTAMP(DATE_ADD(CURRENT_DATE, INTERVAL -1 DAY))
+
                 UNION ALL
+
                 SELECT p.received_at
                     , TIMESTAMP_DIFF(p.received_at, s.sent_at, millisecond) AS latency
                     , p.server_address
                 FROM `{project_id}.latency_experiments.long_running_two_sided_orders` s
                 JOIN `{project_id}.indexer_stream_new.received_orders_and_cancels` p
                     ON p.client_id = CAST(s.client_id AS STRING)
-                   AND p.address = s.address
-                   AND p.received_at > TIMESTAMP("{start_timestamp}")
-                  AND p.received_at > TIMESTAMP(@timestamp)
-                WHERE s.sent_at > TIMESTAMP("{start_timestamp}")
-                  AND s.address = @maker_address
-                  AND TIMESTAMP_TRUNC(s.sent_at, DAY) > TIMESTAMP(TIMESTAMP_ADD(CURRENT_DATE, INTERVAL -1 DAY))
+                AND p.address = s.address
+                WHERE s.sent_at > TIMESTAMP(DATE_ADD(CURRENT_DATE, INTERVAL -1 DAY))
+                AND s.address = @maker_address
+                AND p.received_at > TIMESTAMP(@timestamp)
+                AND p.received_at > TIMESTAMP(DATE_ADD(CURRENT_DATE, INTERVAL -1 DAY))
                 ORDER BY 1
-        """.format(
-            start_timestamp=START_TIMESTAMP,
-            project_id=PROJECT_ID,
-        ),
+        """.format(project_id=PROJECT_ID),
         "params": {"maker_address": config["maker_address"]},
         "metric_name": "bigquery.short_term_order_latency",
     },
